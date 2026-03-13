@@ -1,11 +1,15 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
+
 import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
+import ResetPasswordPage from "../pages/ResetPasswordPage";
 import HomePage from "../pages/HomePage";
 import ProfilePage from "../pages/ProfilePage";
 import CollaborationPage from "../pages/CollabPage";
+
+import AppLayout from "../components/layout/AppLayout";
 
 /**
  * temporary auth check
@@ -36,36 +40,22 @@ export default function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Protected routes */}
+        {/* Protected layout */}
         <Route
-          path="/home"
           element={
             <ProtectedRoute>
-              <HomePage />
+              <AppLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/collab" element={<CollaborationPage />} />
+        </Route>
 
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/collaboration/:sessionId"
-          element={
-            <ProtectedRoute>
-              <CollaborationPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Catch-all for unknown routes */}
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
