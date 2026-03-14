@@ -1,11 +1,9 @@
 import { supabase } from "../services/supabaseClient.js";
-import { validatePassword , validateUsername } from "../validators/fieldValidators.js";
 
 /**
  * Registers a new user account.
  *
  * This endpoint creates a new user using Supabase Auth's signUp function.
- * The user's password is first validated before attempting registration.
  * If the registration is successful, the newly created user information
  * is returned.
  *
@@ -21,7 +19,6 @@ import { validatePassword , validateUsername } from "../validators/fieldValidato
  *
  * Behavior:
  *   - Extracts username, email, and password from the request body.
- *   - Validates the password using the validatePassword function.
  *   - Calls Supabase Auth to create a new user account.
  *   - Stores the username as part of the user's metadata.
  *   - Returns the created user information if registration is successful.
@@ -42,26 +39,6 @@ import { validatePassword , validateUsername } from "../validators/fieldValidato
  */
 export const signup = async (req, res) => {
     const { username, email, password } = req.body;
-
-    // validate username
-    const usernameError = validateUsername(username);
-
-    if (usernameError) {
-        return res.status(400).json({
-            code: "INVALID_USERNAME",
-            message: usernameError
-        });
-    }
-
-    // validate password
-    const passwordError = validatePassword(password);
-
-    if (passwordError) {
-        return res.status(400).json({
-            code: "INVALID_PASSWORD",
-            message: passwordError
-        });
-    }
 
     // check for duplicate username
     const { data: existing } = await supabase
@@ -353,16 +330,6 @@ export const logout = async (req, res) => {
       return res.status(400).json({
         code: "EMPTY_FIELD",
         message: "Username is required"
-      });
-    }
-    
-    // validate new username
-    const usernameError = validateUsername(username);
-
-    if (usernameError) {
-      return res.status(400).json({
-        code: "INVALID_USERNAME",
-        message: usernameError
       });
     }
 
