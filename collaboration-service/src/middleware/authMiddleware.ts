@@ -5,8 +5,9 @@ const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001'
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
-    role: string;
     username: string;
+    email: string;
+    isAdmin: boolean;
   };
 }
 
@@ -37,7 +38,7 @@ export const authenticate = async (
     }
 
     const data = await response.json();
-    req.user = data as { id: string; username: string; role: string; };
+    req.user = data as { id: string; username: string; email: string; isAdmin: boolean; };
     next();
   } catch (err) {
     res.status(500).json({ error: 'Failed to reach User Service' });

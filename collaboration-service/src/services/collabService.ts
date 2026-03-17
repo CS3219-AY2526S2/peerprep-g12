@@ -10,6 +10,7 @@ const CODE_SAVE_INTERVAL_MS = 5000; // save code every 5 seconds (F11.4.2)
 // track idle timers per session
 const idleTimers: Map<string, NodeJS.Timeout> = new Map();
 const idleWarningTimers: Map<string, NodeJS.Timeout> = new Map();
+const codeSaveTimers: Map<string, NodeJS.Timeout> = new Map();
 
 export const initCollabService = (httpServer: HttpServer) => {
   const io = new Server(httpServer, {
@@ -53,6 +54,7 @@ export const initCollabService = (httpServer: HttpServer) => {
 
         // start idle timer
         resetIdleTimer(io, sessionId);
+        startCodeSaveInterval(sessionId);
 
         console.log(`User ${userId} joined session ${sessionId}`);
       } catch (err) {
@@ -79,6 +81,7 @@ export const initCollabService = (httpServer: HttpServer) => {
 
         // clear idle timers
         clearIdleTimers(sessionId);
+        stopCodeSaveInterval(sessionId);
 
         // notify partner (F11.5.1)
         socket.to(sessionId).emit('session-ended', {
@@ -106,6 +109,14 @@ export const initCollabService = (httpServer: HttpServer) => {
       if (sessionId && userId) {
         socket.to(sessionId).emit('user-disconnected', { userId });
         console.log(`User ${userId} disconnected from session ${sessionId}`);
+
+      // Check if room is now empty, if so stop the interval
+      const room = io.sockets.adapter.rooms.get(sessionId);
+      if (!room || room.size === 0) {
+        stopCodeSaveInterval(sessionId);
+        clearIdleTimers(sessionId);
+        console.log(`All users left session ${sessionId}, timers cleared`);
+        }
       }
     });
   });
@@ -148,4 +159,32 @@ const clearIdleTimers = (sessionId: string) => {
   const warningTimer = idleWarningTimers.get(sessionId);
   if (timer) { clearTimeout(timer); idleTimers.delete(sessionId); }
   if (warningTimer) { clearTimeout(warningTimer); idleWarningTimers.delete(sessionId); }
+  stopCodeSaveInterval(sessionId);
+};
+
+const startCodeSaveInterval = (sessionId: string) => {
+
+  console.log(`Starting code save interval for session ${sessionId}`);
+  // clear existing interval if any
+  const existing = codeSaveTimers.get(sessionId);
+  if (existing) clearInterval(existing);
+
+  const interval = setInterval(async () => {
+  try {
+    const code = await redisClient.get(`session:${sessionId}:code`);
+    if (code) {
+      await sessionService.updateSession(sessionId, { code_content: code });
+      console.log(`Code saved to Supabase for session ${sessionId}`);
+    }
+  } catch (err) {
+    console.error(`Failed to save code for session ${sessionId}:`, err);
+  }
+}, CODE_SAVE_INTERVAL_MS);
+
+  codeSaveTimers.set(sessionId, interval);
+};
+
+const stopCodeSaveInterval = (sessionId: string) => {
+    const interval = codeSaveTimers.get(sessionId);
+    if (interval) { clearInterval(interval); codeSaveTimers.delete(sessionId); }
 };

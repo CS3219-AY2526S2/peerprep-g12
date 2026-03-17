@@ -32,7 +32,7 @@ export const getSession = async (
   res: Response
 ): Promise<void> => {
   try {
-    const sessionId = req.params.session_id as string;
+    const sessionId = req.params['sessionId'] as string;
     const session = await sessionService.getSessionById(sessionId);
 
     if (!session) {
@@ -78,7 +78,7 @@ export const endSession = async (
   res: Response
 ): Promise<void> => {
   try {
-    const sessionId = req.params.session_id as string;
+    const sessionId = req.params['sessionId'] as string;
     const session = await sessionService.getSessionById(sessionId);
 
     if (!session) {
