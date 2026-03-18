@@ -1,14 +1,38 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { getUserInfo } from "../services/userService";
+
+type UserProfile = {
+  id: string;
+  username: string;
+  email: string;
+  isAdmin: boolean;
+};
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   const linkStyle = "block px-4 py-2 rounded-lg transition";
   const activeStyle = "bg-blue-600 text-white";
   const inactiveStyle = "text-slate-700 hover:bg-slate-200";
 
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const data = await getUserInfo();
+        setUser(data);
+      } catch {
+        setUser(null);
+      }
+    }
+
+    loadUser();
+  }, []);
+
   function handleLogout() {
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("isAdmin");
     navigate("/login");
   }
   return (
@@ -51,6 +75,17 @@ export default function Navbar() {
         >
           Profile
         </NavLink>
+
+        {user?.isAdmin && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              `${linkStyle} ${isActive ? activeStyle : inactiveStyle}`
+            }
+          >
+            Admin
+          </NavLink>
+        )}
       </nav>
     </aside>
   );

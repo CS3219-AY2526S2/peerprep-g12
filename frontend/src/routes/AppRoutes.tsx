@@ -8,6 +8,7 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 import HomePage from "../pages/HomePage";
 import ProfilePage from "../pages/ProfilePage";
 import CollaborationPage from "../pages/CollabPage";
+import AdminPage from "../pages/AdminPage";
 
 import AppLayout from "../components/layout/AppLayout";
 
@@ -17,6 +18,22 @@ import AppLayout from "../components/layout/AppLayout";
 const isAuthenticated = () => {
   return localStorage.getItem("accessToken") !== null;
 };
+
+const isAdmin = () => {
+  return localStorage.getItem("isAdmin") === "true";
+};
+
+function AdminRoute({ children }: { children: ReactNode }) {
+  if (!isAuthenticated()) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isAdmin()) {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
 
 /**
  * protects routes that require login
@@ -53,6 +70,14 @@ export default function AppRoutes() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/collab" element={<CollaborationPage />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPage />
+              </AdminRoute>
+            }
+          />
         </Route>
 
         {/* Catch-all */}
