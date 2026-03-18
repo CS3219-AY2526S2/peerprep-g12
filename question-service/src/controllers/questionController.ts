@@ -39,3 +39,30 @@ export async function getAllQuestions(req: Request, res: Response) {
     
         return res.status(200).json(result); 
 }
+
+/**
+ * Retrieves a single question by its question number.
+ * Only returns available or archived versions, never superseded.
+ * 
+ * @route GET /questions/:questionNumber
+ * @access Admin only 
+ * @param {strung} questionNumber - The question number to retrieve
+ * @returns {Object} The matching question object with its topics
+ */
+export async function getQuestionByNumber(req: Request, res: Response) {
+    const { questionNumber } = req.params;
+
+    const { data, error } = await supabase
+        .schema('questionservice')
+        .from('questions')
+        .select(`*, question_topics(topic)`)
+        .eq('question_number', questionNumber)
+        .in('availability_status', ['available', 'archived'])
+        .single();
+    
+    if (error || !data) {
+        return res.status(404).json({error: 'Question not found'});
+    }
+
+    return res.status(200).json(data)
+}
