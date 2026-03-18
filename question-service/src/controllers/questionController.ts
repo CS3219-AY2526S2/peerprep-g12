@@ -247,3 +247,77 @@ export async function editQuestion(req: Request, res: Response) {
 
     return res.status(200).json(newVersion);
 }
+
+/**
+ * Archives a question, removing it from active use. 
+ * Only available questions can be archived.
+ * 
+ * @route PATCH /questions.:questionNumber/archive
+ * @access Admin only 
+ * @param {string} questionNumber - The question number to archive 
+ * @returns {Object} The updated question object 
+ */
+export async function archiveQuestion(req: Request, res: Response) {
+    const { questionNumber } = req.params; 
+
+    const { data: current, error: fetchError } = await supabase
+        .schema('questionservice')
+        .from('questions')
+        .select('*')
+        .eq('question_numer', questionNumber)
+        .eq('availability_status', 'available')
+        .single();
+
+    if (fetchError || !current) {
+        return res.status(404).json({ error: `No available question found with question number ${questionNumber}.`});
+    }
+
+    const { data, error } = await supabase
+        .schema('questionservice')
+        .from('questions')
+        .update({ availability_status: 'archived'})
+        .eq('id', current.id)
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(200).json(data);
+}
+
+/**
+ * Restores an archived question back to available status. 
+ * Only archived questions can be restored, no superseded questions.
+ * 
+ * @route PATCH /questions/:questionNumber/restore
+ * @access Admin only 
+ * @param {string} questionNumber - The question number to restore
+ * @returns {Object} The updated question object 
+ */
+export async function restoreQuestion(req: Request, res: Response) {
+    const { questionNumber } = req.params;
+
+    const { data: current, error: fetchError } = await supabase
+        .schema('questionservice')
+        .from('questions')
+        .select('*')
+        .eq('question_number', questionNumber)
+        .eq('availability_status', 'archived')
+        .single();
+
+    if (fetchError || !current) {
+        return res.status(404).json({ error: `No archived question found with question number ${questionNumber}.`})
+    }
+
+    const { data, error } = await supabase
+        .schema('questionservice')
+        .from('questions')
+        .update({ availability_status: 'available' })
+        .eq('id', current.id)
+        .select()
+        .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(200).json(data);
+}
