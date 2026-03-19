@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { loginUser } from "../services/userService";
+import { loginUser, getUserInfo } from "../services/userService";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +19,8 @@ export default function LoginPage() {
 
     try {
       await loginUser(email, password);
+      const user = await getUserInfo();
+      localStorage.setItem("isAdmin", String(user.isAdmin));
       navigate("/home");
     } catch (err) {
       const message =
