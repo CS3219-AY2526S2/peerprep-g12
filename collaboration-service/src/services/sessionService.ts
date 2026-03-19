@@ -3,7 +3,7 @@ import { Session, CreateSessionDTO, UpdateSessionDTO } from '../models/session';
 import { randomUUID } from 'crypto';
 
 const fetchQuestionFromService = async (topic: string, difficulty: string): Promise<string> => {
-  const questionServiceUrl = process.env.QUESTION_SERVICE_URL || 'http://localhost:3002';
+  const questionServiceUrl = process.env.QUESTION_SERVICE_URL || 'http://localhost:3001';
   
   const response = await fetch(`${questionServiceUrl}/internal/questions/fetch`, {
     method: 'POST',
@@ -15,7 +15,7 @@ const fetchQuestionFromService = async (topic: string, difficulty: string): Prom
     throw new Error(`Failed to fetch question from Question Service: ${response.statusText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { id: string };
   
   if (!data.id) {
     throw new Error('Question Service returned no question ID');
