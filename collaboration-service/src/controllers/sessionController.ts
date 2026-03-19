@@ -26,7 +26,7 @@ export const createSession = async (
   }
 };
 
-// called (by frontend?) to get a specific session
+// called (by frontend) to get a specific session
 export const getSession = async (
   req: AuthenticatedRequest,
   res: Response
