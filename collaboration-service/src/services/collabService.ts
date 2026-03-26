@@ -47,6 +47,11 @@ export const initCollabService = (httpServer: HttpServer) => {
         const savedCode = await redisClient.get(`session:${sessionId}:code`);
         if (savedCode) {
           socket.emit('code-restored', { code: savedCode });
+        } else if (session.code_content) {
+          // fallback to last Supabase save (F11.2.3)
+          socket.emit('code-restored', { code: session.code_content });
+          // re-populate Redis with Supabase value
+          await redisClient.set(`session:${sessionId}:code`, session.code_content);
         }
 
         // notify partner that user has joined

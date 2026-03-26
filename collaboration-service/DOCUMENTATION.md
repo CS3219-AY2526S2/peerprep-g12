@@ -1,11 +1,8 @@
 # Collaboration Service Documentation
 
-## Overview
-Handles real-time collaboration rooms for PeerPrep. Built with Node.js, Express, Socket.io, Redis and Supabase.
-
+## Setup
 **Port:** `3003`
 
-## Setup
 1. Install dependencies: `npm install`
 2. Start Redis: `docker run -d -p 6379:6379 --name redis-local redis:7-alpine`
 3. Fill in `.env` (see `.env.example`)
@@ -105,7 +102,7 @@ End a collaboration session (F11.5).
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `code-restored` | `{ code }` | Previous code restored from Redis on join |
+| `code-restored` | `{ code }` | Previous code restored from Redis on join. If Redis key is unavailable, falls back to last saved code_content from Supabase. |
 | `user-joined` | `{ userId }` | Partner joined the room |
 | `user-disconnected` | `{ userId }` | Partner unexpectedly disconnected |
 | `yjs-update` | `{ update }` | Partner made a code change |
