@@ -96,7 +96,7 @@ export const getUserInfo = async () => {
 
 /**
  * Update username
- * PUT /user/username
+ * PATCH /user/username
  */
 export const updateUsername = async (username) => {
   return authFetch(`${API_BASE}/user/username`, {
@@ -107,7 +107,7 @@ export const updateUsername = async (username) => {
 
 /**
  * Promote user to admin
- * PUT /admin/role/:userId
+ * PATCH /admin/role/:userId
  */
 export const promoteUser = async (userId) => {
   return authFetch(`${API_BASE}/admin/role/${userId}`, {
