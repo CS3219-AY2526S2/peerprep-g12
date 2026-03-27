@@ -136,3 +136,13 @@ export const checkUniqueUsername = async (username) => {
     method: "GET",
   });
 };
+
+/**
+ * Delete current user's account (self only)
+ * DELETE /user/deleteAccount
+ */
+export const deleteOwnAccount = async () => {
+  return authFetch(`${API_BASE}/user/deleteAccount`, {
+    method: "DELETE",
+  });
+};

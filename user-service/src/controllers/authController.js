@@ -577,3 +577,99 @@ export const checkUniqueUsername = async (req, res) => {
       available: true
     });
   };
+
+/**
+ * Deletes the currently authenticated user's account.
+ * Allows a user to delete their own account only.
+ * If the user is an administrator,  system checks that there is
+ * at least one other admin remaining before allowing deletion.
+ *
+ * Endpoint:
+ *   DELETE /user/deleteAccount
+ *
+ * Headers:
+ *   Authorization: Bearer <access_token>
+ *
+ * Returns:
+ *   200 OK
+ *   {
+ *     code: "SUCCESS",
+ *     message: "Account deleted successfully"
+ *   }
+ *
+ * Errors:
+ *   401 Unauthorized - Missing or invalid authentication token
+ *   400 Bad Request - Cannot delete the last remaining admin
+ *   500 Internal Server Error - Failed to delete user profile or auth user
+ */
+  export const deleteOwnAccount = async (req, res) => {
+  const db = supabaseAdmin;
+  const userId = req.userId;
+
+  // Get user role
+  const { data: userProfile, error: userError } = await db
+    .schema("userservice")
+    .from("profiles")
+    .select("user_role")
+    .eq("id", userId)
+    .single();
+
+  if (userError || !userProfile) {
+    return res.status(500).json({
+      code: "PROFILE_FETCH_FAILED",
+      message: "Failed to retrieve user profile"
+    });
+  }
+
+  // If admin, check if last admin
+  if (userProfile.user_role === "admin") {
+    const { count, error: countError } = await db
+      .schema("userservice")
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .eq("user_role", "admin");
+
+    if (countError) {
+      return res.status(500).json({
+        code: "COUNT_FAILED",
+        message: "Failed to check admin count"
+      });
+    }
+
+    if (count <= 1) {
+      return res.status(400).json({
+        code: "LAST_ADMIN",
+        message: "Cannot delete the last remaining admin"
+      });
+    }
+  }
+
+  // Delete from profiles
+  const { error: deleteProfileError } = await db
+    .schema("userservice")
+    .from("profiles")
+    .delete()
+    .eq("id", userId);
+    
+  if (deleteProfileError) {
+    return res.status(500).json({
+      code: "DELETE_FAILED",
+      message: "Failed to delete user profile"
+    });
+  }
+
+  // Delete from Supabase Auth
+  const { error: deleteAuthError } = await db.auth.admin.deleteUser(userId);
+
+  if (deleteAuthError) {
+    return res.status(500).json({
+      code: "DELETE_FAILED",
+      message: "Failed to delete auth user"
+    });
+  }
+
+  res.json({
+    code: "SUCCESS",
+    message: "Account deleted successfully"
+  });
+};
