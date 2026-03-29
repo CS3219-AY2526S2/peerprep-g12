@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3001";
+const API_BASE = "http://localhost:3000";
 
 type RequestOptions = RequestInit & {
   headers?: Record<string, string>;
@@ -100,6 +100,15 @@ export async function logoutUser() {
     localStorage.removeItem("accessToken");
     throw error;
   }
+}
+
+export async function checkUniqueUsername(username: string) {
+  return authFetch<{ available: boolean }>(
+    `${API_BASE}/user/checkUniqueUsername?username=${encodeURIComponent(username)}`,
+    {
+      method: "GET",
+    },
+  );
 }
 
 export async function getUserInfo() {

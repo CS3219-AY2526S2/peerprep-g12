@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3001";
+const API_BASE = "http://localhost:3000";
 
 /**
  * Helper function that automatically attaches the Authorization token.
@@ -11,8 +11,8 @@ const authFetch = async (url, options = {}) => {
     headers: {
       "Content-Type": "application/json",
       ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers
-    }
+      ...options.headers,
+    },
   });
 
   const data = await response.json();
@@ -29,9 +29,12 @@ const authFetch = async (url, options = {}) => {
  * POST /auth/signup
  */
 export const signupUser = async (username, email, password) => {
-  return authFetch(`${API_BASE}/auth/signup`, {
+  return fetch(`${API_BASE}/auth/signup`, {
     method: "POST",
-    body: JSON.stringify({ username, email, password })
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ username, email, password }),
   });
 };
 
@@ -40,10 +43,15 @@ export const signupUser = async (username, email, password) => {
  * POST /auth/login
  */
 export const loginUser = async (email, password) => {
-  const data = await authFetch(`${API_BASE}/auth/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
-    body: JSON.stringify({ email, password })
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
   });
+
+  const data = await res.json();
 
   // store token automatically
   if (data.accessToken) {
@@ -59,7 +67,7 @@ export const loginUser = async (email, password) => {
  */
 export const logoutUser = async () => {
   const data = await authFetch(`${API_BASE}/auth/logout`, {
-    method: "POST"
+    method: "POST",
   });
 
   localStorage.removeItem("accessToken");
@@ -71,7 +79,7 @@ export const logoutUser = async () => {
  * Get current user info
  * GET /user/getUserInfo
  * Returns { username, email, user_role }
- * 
+ *
  * Example to check if user is admin:
  * const user = await getUserInfo();
  * if (user.isAdmin) {
@@ -82,28 +90,28 @@ export const logoutUser = async () => {
  */
 export const getUserInfo = async () => {
   return authFetch(`${API_BASE}/user/getUserInfo`, {
-    method: "GET"
+    method: "GET",
   });
 };
 
 /**
  * Update username
- * PUT /user/username
+ * PATCH /user/username
  */
 export const updateUsername = async (username) => {
   return authFetch(`${API_BASE}/user/username`, {
     method: "PUT",
-    body: JSON.stringify({ username })
+    body: JSON.stringify({ username }),
   });
 };
 
 /**
  * Promote user to admin
- * PUT /admin/role/:userId
+ * PATCH /admin/role/:userId
  */
 export const promoteUser = async (userId) => {
   return authFetch(`${API_BASE}/admin/role/${userId}`, {
-    method: "PUT"
+    method: "PUT",
   });
 };
 
@@ -113,6 +121,28 @@ export const promoteUser = async (userId) => {
  */
 export const getAllUsers = async () => {
   return authFetch(`${API_BASE}/admin/allUsers`, {
-    method: "GET"
+    method: "GET",
+  });
+};
+
+/**
+ * Check if there is a duplicate username in the database.
+ * GET /user/checkUniqueUsername?username=<username>
+ */
+export const checkUniqueUsername = async (username) => {
+  const params = new URLSearchParams({ username });
+
+  return fetch(`${API_BASE}/user/checkUniqueUsername?${params.toString()}`, {
+    method: "GET",
+  });
+};
+
+/**
+ * Delete current user's account (self only)
+ * DELETE /user/deleteAccount
+ */
+export const deleteOwnAccount = async () => {
+  return authFetch(`${API_BASE}/user/deleteAccount`, {
+    method: "DELETE",
   });
 };
