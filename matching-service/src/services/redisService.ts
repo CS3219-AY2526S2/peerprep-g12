@@ -1,5 +1,6 @@
 import type { CandidateMatch, MatchCriteria } from '../types/matchingEvents.js';
 import { createLogger } from '../utils/logger.js';
+import { createClient, type RedisClientType } from 'redis';
 
 interface PendingConfirmationState {
 	proposedMatch: CandidateMatch;
@@ -12,28 +13,111 @@ interface WaitingUser {
 	queuedAt: number;
 }
 
+interface SerializedPendingConfirmationState {
+	proposedMatch: CandidateMatch;
+	acceptedUserIds: string[];
+}
+
 export class RedisService {
 	private readonly logger = createLogger('RedisService');
-	private readonly waitingByUserId = new Map<string, WaitingUser>();
-	private readonly topicQueues = new Map<string, WaitingUser[]>();
-	private readonly pendingConfirmationByUser = new Map<string, PendingConfirmationState>();
+	private readonly client: RedisClientType;
+	private readonly keyPrefix = 'matching';
 	private readonly difficultyRank: Record<MatchCriteria['difficulty'], number> = {
 		easy: 1,
 		medium: 2,
 		hard: 3
 	};
 
+	constructor() {
+        this.client = createClient({
+            url: process.env.REDIS_URL || 'redis://localhost:6379'
+        });
+
+		this.client.on('error', (err) => this.logger.error('Redis client error', { error: err.message }));
+        this.client.on('ready', () => this.logger.info('Redis connection is ready.'));
+    }
+	
 	async connect(): Promise<void> {
-		// replace with real Redis client
-		this.logger.info('Initialized Redis service');
+		if (!this.client.isOpen) {
+			await this.client.connect();
+			await this.client.ping();
+			this.logger.info('Connected to Redis service');
+		}
+	}
+
+	private buildWaitingUserKey(userId: string): string {
+		return `${this.keyPrefix}:waiting:user:${userId}`;
 	}
 
 	private buildTopicQueueKey(criteria: MatchCriteria): string {
-		return `topic:${criteria.topic}`;
+		return `${this.keyPrefix}:queue:topic:${criteria.topic}`;
+	}
+
+	// 'pending' keys refer to pending imperfect match confirmations
+	private buildPendingByUserKey(userId: string): string {
+		return `${this.keyPrefix}:pending:user:${userId}`;
+	}
+
+	private buildPendingStateKey(matchId: string): string {
+		return `${this.keyPrefix}:pending:state:${matchId}`;
+	}
+
+	private buildPendingMatchId(match: CandidateMatch): string {
+		const [a, b] = [match.userAId, match.userBId].sort();
+		return `${a}:${b}`;
+	}
+
+	private parseWaitingUser(value: string | null): WaitingUser | null {
+		if (!value) {
+			return null;
+		}
+
+		try {
+			return JSON.parse(value) as WaitingUser;
+		} catch (error) {
+			this.logger.error('Failed to parse waiting user payload', {
+				error: error instanceof Error ? error.message : String(error),
+				value
+			});
+			return null;
+		}
+	}
+
+	private parsePendingState(value: string | null): PendingConfirmationState | null {
+		if (!value) {
+			return null;
+		}
+
+		try {
+			const parsed = JSON.parse(value) as SerializedPendingConfirmationState;
+			return {
+				proposedMatch: parsed.proposedMatch,
+				acceptedUserIds: new Set(parsed.acceptedUserIds)
+			};
+		} catch (error) {
+			this.logger.error('Failed to parse pending confirmation payload', {
+				error: error instanceof Error ? error.message : String(error),
+				value
+			});
+			return null;
+		}
+	}
+
+	private async savePendingState(matchId: string, state: PendingConfirmationState): Promise<void> {
+		const serializable: SerializedPendingConfirmationState = {
+			proposedMatch: state.proposedMatch,
+			acceptedUserIds: Array.from(state.acceptedUserIds)
+		};
+
+		await this.client.set(this.buildPendingStateKey(matchId), JSON.stringify(serializable), { EX: 30 });
 	}
 
 	async enqueueUser(userId: string, criteria: MatchCriteria): Promise<void> {
-		if (this.waitingByUserId.has(userId)) {
+		const waitingUserKey = this.buildWaitingUserKey(userId);
+
+		// Check if user is already enqueued to prevent duplicates
+		const existing = await this.client.get(waitingUserKey);
+		if (existing) {
 			this.logger.warn('User already queued, enqueue skipped', { userId, topic: criteria.topic });
 			return;
 		}
@@ -45,64 +129,75 @@ export class RedisService {
 		};
 
 		const queueKey = this.buildTopicQueueKey(criteria);
-		const queue = this.topicQueues.get(queueKey) ?? [];
-		queue.push(waitingUser);
 
-		// Longest waiting time first 
-		queue.sort((a, b) => a.queuedAt - b.queuedAt);
+		// Create user entry and add to topic queue concurrently
+		await this.client.multi()
+			.set(waitingUserKey, JSON.stringify(waitingUser))
+			.zAdd(queueKey, { score: waitingUser.queuedAt, value: userId })
+			.exec();
+		const queueSize = await this.client.zCard(queueKey);
 
-		this.topicQueues.set(queueKey, queue);
-		this.waitingByUserId.set(userId, waitingUser);
 		this.logger.info('User enqueued', {
 			userId,
 			queueKey,
-			queueSize: queue.length,
+			queueSize,
 			criteria
 		});
 	}
 
 	async removeUserFromQueue(userId: string): Promise<void> {
-		const waitingUser = this.waitingByUserId.get(userId);
+		const waitingUserKey = this.buildWaitingUserKey(userId);
+		const waitingUser = this.parseWaitingUser(await this.client.get(waitingUserKey));
 		if (!waitingUser) {
 			this.logger.debug('removeUserFromQueue aborted: user not found in queue', { userId });
 			return;
 		}
 
 		const queueKey = this.buildTopicQueueKey(waitingUser.criteria);
-		const queue = this.topicQueues.get(queueKey);
-		if (queue) {
-			this.topicQueues.set(
-				queueKey,
-				queue.filter((entry) => entry.userId !== userId)
-			);
-		}
 
-		this.waitingByUserId.delete(userId);
+		// Remove user from topic queue and delete user entry concurrently
+		await this.client.multi()
+			.zRem(queueKey, userId)
+			.del(waitingUserKey)
+			.exec();
+		const remainingQueueSize = await this.client.zCard(queueKey);
+
 		this.logger.info('User removed from queue', {
 			userId,
 			queueKey,
-			remainingQueueSize: this.topicQueues.get(queueKey)?.length ?? 0
+			remainingQueueSize
 		});
 	}
 
 	async findBestCandidate(requestingUserId: string): Promise<CandidateMatch | null> {
-		const requester = this.waitingByUserId.get(requestingUserId);
+		// Turn text back into WaitingUser typescript interface
+		const requester = this.parseWaitingUser(await this.client.get(this.buildWaitingUserKey(requestingUserId)));
 		if (!requester) {
 			this.logger.debug('findBestCandidate aborted: user is not queued', { requestingUserId });
 			return null;
 		}
 
 		const queueKey = this.buildTopicQueueKey(requester.criteria);
-		const queue = this.topicQueues.get(queueKey) ?? [];
-		const candidatePool = queue
-			.filter((entry) => entry.userId !== requestingUserId)
-			.slice(0, 20);
 
+		// Fetch 50 users from queue (over-fetching to give some buffer)
+		// Double check user's own id is not taken for the 20 candidate ids
+		// Fetch all candidate payloads
+		const queuedUserIds = await this.client.zRange(queueKey, 0, 49);
+		const candidateIds = queuedUserIds.filter((userId) => userId !== requestingUserId).slice(0, 20);
+		const candidatePayloads = candidateIds.length > 0
+			? await this.client.mGet(candidateIds.map((id) => this.buildWaitingUserKey(id)))
+			: [];
+		const candidatePool = candidatePayloads
+			.map((value) => this.parseWaitingUser(value))
+			.filter((candidate): candidate is WaitingUser => candidate !== null);
+
+		// Can consider using this to notify users of low activity
 		if (candidatePool.length === 0) {
+			const totalQueueSize = await this.client.zCard(queueKey);
 			this.logger.debug('No candidate to match with yet', {
 				requestingUserId,
 				queueKey,
-				totalQueueSize: queue.length
+				totalQueueSize
 			});
 			return null;
 		}
@@ -114,7 +209,7 @@ export class RedisService {
 
 		let bestCandidate: WaitingUser | null = null;
 		let bestScore = -1;
-
+		// Loop through candidates and calculate compatibility score
 		for (const candidate of candidatePool) {
 			const score = this.calculateCompatibilityScore(requester.criteria, candidate.criteria);
 			this.logger.debug('Compatibility score calculated', {
@@ -124,12 +219,14 @@ export class RedisService {
 				candidateQueuedAt: candidate.queuedAt,
 				candidateCriteria: candidate.criteria
 			});
+
 			if (!bestCandidate) {
 				bestCandidate = candidate;
 				bestScore = score;
 				continue;
 			}
 
+			// Check if candidate has a higher score, then if tie check if candidate has longer waiting time
 			const hasHigherScore = score > bestScore;
 			const tieButOlder = score === bestScore && candidate.queuedAt < bestCandidate.queuedAt;
 			if (hasHigherScore || tieButOlder) {
@@ -143,19 +240,18 @@ export class RedisService {
 			return null;
 		}
 
-		// Remove both users from queue immediately after matched
-		const matchedUserIds = new Set([requestingUserId, bestCandidate.userId]);
-		this.topicQueues.set(
-			queueKey,
-			queue.filter((entry) => !matchedUserIds.has(entry.userId))
-		);
-		this.waitingByUserId.delete(requestingUserId);
-		this.waitingByUserId.delete(bestCandidate.userId);
+		// If match found, remove both users from queue and delete their user entries concurrenntly
+		await this.client.multi()
+			.zRem(queueKey, [requestingUserId, bestCandidate.userId])
+			.del([this.buildWaitingUserKey(requestingUserId), this.buildWaitingUserKey(bestCandidate.userId)])
+			.exec();
+		const remainingQueueSize = await this.client.zCard(queueKey);
+
 		this.logger.info('Users matched and dequeued', {
 			requestingUserId,
 			matchedUserId: bestCandidate.userId,
 			queueKey,
-			remainingQueueSize: this.topicQueues.get(queueKey)?.length ?? 0,
+			remainingQueueSize,
 			isPerfect:
 				requester.criteria.language === bestCandidate.criteria.language &&
 				requester.criteria.difficulty === bestCandidate.criteria.difficulty
@@ -196,22 +292,44 @@ export class RedisService {
 			proposedMatch: match,
 			acceptedUserIds: new Set<string>()
 		};
+		const matchId = this.buildPendingMatchId(match);
 
-		this.pendingConfirmationByUser.set(match.userAId, state);
-		this.pendingConfirmationByUser.set(match.userBId, state);
+		// Save pending confirmation state and index by both user ids concurrently
+		await this.client.multi()
+			.set(this.buildPendingByUserKey(match.userAId), matchId)
+			.set(this.buildPendingByUserKey(match.userBId), matchId)
+			.set(this.buildPendingStateKey(matchId), JSON.stringify({
+				proposedMatch: state.proposedMatch,
+				acceptedUserIds: []
+			}))
+			.exec();
+
 		this.logger.info('Pending imperfect confirmation saved', {
 			userAId: match.userAId,
 			userBId: match.userBId,
+			matchId,
 			resolvedCriteria: match.resolvedCriteria
 		});
 	}
 
 	async getPendingConfirmationByUser(userId: string): Promise<PendingConfirmationState | null> {
-		return this.pendingConfirmationByUser.get(userId) ?? null;
+		const matchId = await this.client.get(this.buildPendingByUserKey(userId));
+		if (!matchId) {
+			return null;
+		}
+
+		return this.parsePendingState(await this.client.get(this.buildPendingStateKey(matchId)));
 	}
 
 	async setUserConfirmation(userId: string, accepted: boolean): Promise<void> {
-		const state = this.pendingConfirmationByUser.get(userId);
+		const matchId = await this.client.get(this.buildPendingByUserKey(userId));
+		if (!matchId) {
+			this.logger.warn('Confirmation received without pending match id', { userId, accepted });
+			return;
+		}
+		
+		// Ignore if no pending state found
+		const state = this.parsePendingState(await this.client.get(this.buildPendingStateKey(matchId)));
 		if (!state) {
 			this.logger.warn('Confirmation received without pending state', { userId, accepted });
 			return;
@@ -219,6 +337,7 @@ export class RedisService {
 
 		if (!accepted) {
 			state.acceptedUserIds.delete(userId);
+			await this.savePendingState(matchId, state);
 			this.logger.info('User declined imperfect confirmation', {
 				userId,
 				acceptedUserCount: state.acceptedUserIds.size
@@ -227,6 +346,7 @@ export class RedisService {
 		}
 
 		state.acceptedUserIds.add(userId);
+		await this.savePendingState(matchId, state);
 		this.logger.info('User accepted imperfect confirmation', {
 			userId,
 			acceptedUserCount: state.acceptedUserIds.size
@@ -234,11 +354,16 @@ export class RedisService {
 	}
 
 	async clearPendingConfirmation(match: CandidateMatch): Promise<void> {
-		this.pendingConfirmationByUser.delete(match.userAId);
-		this.pendingConfirmationByUser.delete(match.userBId);
+		const matchId = this.buildPendingMatchId(match);
+		await this.client.multi()
+			.del(this.buildPendingByUserKey(match.userAId))
+			.del(this.buildPendingByUserKey(match.userBId))
+			.del(this.buildPendingStateKey(matchId))
+			.exec();
 		this.logger.info('Pending imperfect confirmation cleared', {
 			userAId: match.userAId,
-			userBId: match.userBId
+			userBId: match.userBId,
+			matchId
 		});
 	}
 }
