@@ -41,6 +41,8 @@ export const initCollabService = (httpServer: HttpServer) => {
 
         // join Socket.io room
         socket.join(sessionId);
+        socket.emit('session-joined', { sessionId });
+
         socket.data.sessionId = sessionId;
         socket.data.userId = userId;
 
@@ -69,15 +71,28 @@ export const initCollabService = (httpServer: HttpServer) => {
     });
 
     // Yjs code update: broadcast to other user in room (F11.4.1)
-    socket.on('yjs-update', async ({ sessionId, update, code }) => {
+    socket.on('yjs-update', async ({ sessionId, update}) => {
       // broadcast to other user
       socket.to(sessionId).emit('yjs-update', { update });
 
-      // save latest code to redis
-      await redisClient.set(`session:${sessionId}:code`, code);
-
       // reset idle timer on activity
       resetIdleTimer(io, sessionId);
+    });
+
+    // User rejoins mid-session, needs current doc state from partner
+    socket.on('request-sync', ({ sessionId }) => {
+      // relay to other user in room to send their full doc state
+      socket.to(sessionId).emit('sync-requested', { fromSocketId: socket.id });
+    });
+
+    // Partner sends their full doc state back
+    socket.on('sync-response', ({ sessionId, update, targetSocketId }) => {
+      // relay full state to the rejoining user specifically
+      io.to(targetSocketId).emit('sync-response', { update });
+    });
+
+    socket.on('save-code', async ({ sessionId, code }) => {
+      await redisClient.set(`session:${sessionId}:code`, code);
     });
 
     // user ends session (F11.5)
@@ -92,6 +107,12 @@ export const initCollabService = (httpServer: HttpServer) => {
       await sessionService.endSession(sessionId);
       clearIdleTimers(sessionId);
       stopCodeSaveInterval(sessionId);
+
+      // check if part of session
+      if (session.user1_id !== userId && session.user2_id !== userId) {
+        socket.emit('error', { message: 'Unauthorised access to session' });
+        return;
+      }
 
       // check for early termination (F11.7)
       const sessionDurationMs = Date.now() - new Date(session.start_timestamp).getTime();
