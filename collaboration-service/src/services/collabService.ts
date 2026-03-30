@@ -97,6 +97,11 @@ export const initCollabService = (httpServer: HttpServer) => {
     });
 
     socket.on('save-code', async ({ sessionId, code }) => {
+      const { sessionId: storedSessionId, userId } = socket.data;
+      if (storedSessionId !== sessionId) {
+        socket.emit('error', { message: 'Unauthorised' });
+        return;
+      }
       await redisClient.set(`session:${sessionId}:code`, code);
     });
 
