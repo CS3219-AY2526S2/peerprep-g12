@@ -22,6 +22,7 @@ export class RedisService {
 	private readonly logger = createLogger('RedisService');
 	private readonly client: RedisClientType;
 	private readonly keyPrefix = 'matching';
+	private readonly minimumCompatibilityScore = 3;
 	private readonly difficultyRank: Record<MatchCriteria['difficulty'], number> = {
 		easy: 1,
 		medium: 2,
@@ -240,6 +241,17 @@ export class RedisService {
 			return null;
 		}
 
+		// If best candidate does not meet minimum compatibility score of 3, skip matching for now
+		if (bestScore < this.minimumCompatibilityScore) {
+			this.logger.info('No candidate met minimum compatibility score', {
+				requestingUserId,
+				queueKey,
+				bestScore,
+				minimumCompatibilityScore: this.minimumCompatibilityScore
+			});
+			return null;
+		}
+
 		// If match found, remove both users from queue and delete their user entries concurrenntly
 		await this.client.multi()
 			.zRem(queueKey, [requestingUserId, bestCandidate.userId])
@@ -273,7 +285,7 @@ export class RedisService {
 	private calculateCompatibilityScore(a: MatchCriteria, b: MatchCriteria): number {
 		const languageMatch = a.language === b.language ? 1 : 0;
 		const difficultyMatch = this.getDifficultyUtility(a.difficulty, b.difficulty);
-		return languageMatch * 5 + difficultyMatch;
+		return languageMatch * 2 + difficultyMatch;
 	}
 
 	private getDifficultyUtility(a: MatchCriteria['difficulty'], b: MatchCriteria['difficulty']): number {
