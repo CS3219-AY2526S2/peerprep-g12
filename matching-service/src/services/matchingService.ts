@@ -249,12 +249,44 @@ export class MatchingService {
 		});
 	}
 
-	handleSocketDisconnect(socketId: string): void {
+	async handleSocketDisconnect(socketId: string): Promise<void> {
 		this.logger.info('Socket disconnect received', { socketId });
-		// Placeholder: Find user that owns socket and do necessary cleanup.
-        // Clear active timers and Redis state. 
-        // Remove in memory context and if there is another user waiting for match, notify them.
-		void socketId;
+
+		// TBD: Once auth middleware setup, no need to scan through contexts, just identify user by socketId and get context by id
+		const disconnectedContext = Array.from(this.activeContextsByUserId.values()).find(
+			(context) => context.socketId === socketId
+		);
+
+		if (!disconnectedContext) {
+			this.logger.debug('No active matching context found for disconnected socket', { socketId });
+			return;
+		}
+
+		const disconnectedUserId = disconnectedContext.userId;
+		// Check if user was pending imperfect match confirmation
+		const pending = await this.redisService.getPendingConfirmationByUser(disconnectedUserId);
+
+		// If user was in pending imperfect match confirmation, fail match and notify the other user
+		if (pending?.proposedMatch) {
+			await this.failImperfectMatch(
+				pending.proposedMatch,
+				'Match cancelled because the other user disconnected.'
+			);
+			this.logger.info('Disconnect cleanup completed for pending imperfect confirmation', {
+				socketId,
+				disconnectedUserId,
+				userAId: pending.proposedMatch.userAId,
+				userBId: pending.proposedMatch.userBId
+			});
+			return;
+		}
+
+		await this.redisService.removeUserFromQueue(disconnectedUserId);
+		this.clearUserContext(disconnectedUserId);
+		this.logger.info('Disconnect cleanup completed for queued user', {
+			socketId,
+			disconnectedUserId
+		});
 	}
 
     // Clears any old timers and sets new context for the user (gives them the most recent socket id)
