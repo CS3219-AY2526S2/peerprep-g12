@@ -242,7 +242,9 @@ export class RedisService {
 			// Check if candidate has a higher score, then if tie check if candidate has longer waiting time
 			const hasHigherScore = score > bestScore;
 			const tieButOlder = score === bestScore && candidate.queuedAt < bestCandidate.queuedAt;
-			if (hasHigherScore || tieButOlder) {
+			const perfectTie = score === bestScore && candidate.queuedAt === bestCandidate.queuedAt;
+			const breakPerfectTieWithCoinFlip = perfectTie && Math.random() > 0.5;
+			if (hasHigherScore || tieButOlder || breakPerfectTieWithCoinFlip) {
 				bestCandidate = candidate;
 				bestScore = score;
 			}
