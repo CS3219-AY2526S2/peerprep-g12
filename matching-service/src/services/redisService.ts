@@ -23,6 +23,7 @@ export class RedisService {
 	private readonly logger = createLogger('RedisService');
 	private readonly client: RedisClientType;
 	private readonly keyPrefix = 'matching';
+	private readonly strikeTtlSeconds = 60 * 60;
 	private readonly banTtlSeconds = 60 * 60;
 	private readonly minimumCompatibilityScore = 3;
 	private readonly difficultyRank: Record<MatchCriteria['difficulty'], number> = {
@@ -58,6 +59,10 @@ export class RedisService {
 
 	private buildBannedUserKey(userId: string): string {
 		return `${this.keyPrefix}:banned:user:${userId}`;
+	}
+
+	private buildStrikeKey(userId: string): string {
+		return `${this.keyPrefix}:strike:user:${userId}`;
 	}
 
 	// 'pending' keys refer to pending imperfect match confirmations
@@ -225,9 +230,14 @@ export class RedisService {
 
 	async banUser(userId: string): Promise<void> {
 		const bannedUserKey = this.buildBannedUserKey(userId);
+		const strikeKey = this.buildStrikeKey(userId);
 		const pendingState = await this.getPendingConfirmationByUser(userId);
 
-		await this.client.set(bannedUserKey, 'true', { EX: this.banTtlSeconds });
+		// Ban user for 1 hour and clear their strike
+		await this.client.multi()
+			.set(bannedUserKey, 'true', { EX: this.banTtlSeconds })
+			.del(strikeKey)
+			.exec();
 		await this.removeUserFromQueue(userId);
 
 		this.logger.info('User banned', {
@@ -240,6 +250,39 @@ export class RedisService {
 
 	async isUserBanned(userId: string): Promise<boolean> {
 		return (await this.client.get(this.buildBannedUserKey(userId))) !== null;
+	}
+
+	async recordEarlyTermination(userId: string): Promise<'strike_recorded' | 'ban_triggered' | 'already_banned'> {
+		if (await this.isUserBanned(userId)) {
+			this.logger.debug(
+				'Early termination ignored because user is already banned. Warning: User appears to have access to collaboration session while banned.', 
+				{ userId });
+			return 'already_banned';
+		}
+
+		const strikeKey = this.buildStrikeKey(userId);
+
+		// Creates strike key for user (with TTL of 1 hour) only if key doesn't already exist
+		const setResult = await this.client.set(strikeKey, 'true', {
+			EX: this.strikeTtlSeconds,
+			NX: true
+		});
+
+		// If setResult returned 'OK', strike was recorded (wasn't previously there). So user is safe from ban for now
+		if (setResult === 'OK') {
+			this.logger.info('Early termination strike recorded', {
+				userId,
+				strikeKey,
+				strikeTtlSeconds: this.strikeTtlSeconds
+			});
+			return 'strike_recorded';
+		}
+
+		// Otherwise, user is banned for 1 hour and strike key is cleared
+		await this.client.del(strikeKey);
+		await this.banUser(userId);
+		this.logger.info('Early termination allowance exceeded, user banned', { userId, strikeKey });
+		return 'ban_triggered';
 	}
 
 	// Check if user is currently in queue
