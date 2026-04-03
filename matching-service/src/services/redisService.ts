@@ -11,6 +11,7 @@ interface WaitingUser {
 	userId: string;
 	criteria: MatchCriteria;
 	queuedAt: number;
+	rejectedCandidates: string[];
 }
 
 interface SerializedPendingConfirmationState {
@@ -22,6 +23,9 @@ export class RedisService {
 	private readonly logger = createLogger('RedisService');
 	private readonly client: RedisClientType;
 	private readonly keyPrefix = 'matching';
+	private readonly strikeTtlSeconds = 60 * 60;
+	private readonly banTtlSeconds = 60 * 60;
+	private readonly minimumCompatibilityScore = 3;
 	private readonly difficultyRank: Record<MatchCriteria['difficulty'], number> = {
 		easy: 1,
 		medium: 2,
@@ -53,6 +57,14 @@ export class RedisService {
 		return `${this.keyPrefix}:queue:topic:${criteria.topic}`;
 	}
 
+	private buildBannedUserKey(userId: string): string {
+		return `${this.keyPrefix}:banned:user:${userId}`;
+	}
+
+	private buildStrikeKey(userId: string): string {
+		return `${this.keyPrefix}:strike:user:${userId}`;
+	}
+
 	// 'pending' keys refer to pending imperfect match confirmations
 	private buildPendingByUserKey(userId: string): string {
 		return `${this.keyPrefix}:pending:user:${userId}`;
@@ -73,7 +85,19 @@ export class RedisService {
 		}
 
 		try {
-			return JSON.parse(value) as WaitingUser;
+			const parsed = JSON.parse(value) as Partial<WaitingUser>;
+			if (!parsed.userId || !parsed.criteria || typeof parsed.queuedAt !== 'number') {
+				return null;
+			}
+
+			return {
+				userId: parsed.userId,
+				criteria: parsed.criteria,
+				queuedAt: parsed.queuedAt,
+				rejectedCandidates: Array.isArray(parsed.rejectedCandidates)
+					? parsed.rejectedCandidates
+					: []
+			};
 		} catch (error) {
 			this.logger.error('Failed to parse waiting user payload', {
 				error: error instanceof Error ? error.message : String(error),
@@ -124,8 +148,12 @@ export class RedisService {
 
 		const waitingUser: WaitingUser = {
 			userId,
-			criteria,
-			queuedAt: Date.now()
+			criteria: {
+				...criteria,
+				rejectedCandidates: []
+			},
+			queuedAt: Date.now(),
+			rejectedCandidates: []
 		};
 
 		const queueKey = this.buildTopicQueueKey(criteria);
@@ -142,6 +170,37 @@ export class RedisService {
 			queueKey,
 			queueSize,
 			criteria
+		});
+	}
+
+	async requeueUserWithSameWaitingTime(
+		userId: string,
+		criteria: MatchCriteria,
+		queuedAt: number,
+		rejectedCandidates: string[]
+	): Promise<void> {
+		const waitingUser: WaitingUser = {
+			userId,
+			criteria: {
+				...criteria,
+				rejectedCandidates: Array.from(new Set(rejectedCandidates))
+			},
+			queuedAt,
+			rejectedCandidates: Array.from(new Set(rejectedCandidates))
+		};
+
+		const queueKey = this.buildTopicQueueKey(criteria);
+
+		await this.client.multi()
+			.set(this.buildWaitingUserKey(userId), JSON.stringify(waitingUser))
+			.zAdd(queueKey, { score: queuedAt, value: userId })
+			.exec();
+
+		this.logger.info('User re-enqueued with preserved waiting time', {
+			userId,
+			queueKey,
+			queuedAt,
+			rejectedCandidatesCount: waitingUser.rejectedCandidates.length
 		});
 	}
 
@@ -167,6 +226,75 @@ export class RedisService {
 			queueKey,
 			remainingQueueSize
 		});
+	}
+
+	async banUser(userId: string): Promise<void> {
+		const bannedUserKey = this.buildBannedUserKey(userId);
+		const strikeKey = this.buildStrikeKey(userId);
+		const pendingState = await this.getPendingConfirmationByUser(userId);
+
+		// Ban user for 1 hour and clear their strike
+		await this.client.multi()
+			.set(bannedUserKey, 'true', { EX: this.banTtlSeconds })
+			.del(strikeKey)
+			.exec();
+		await this.removeUserFromQueue(userId);
+
+		this.logger.info('User banned', {
+			userId,
+			bannedUserKey,
+			banTtlSeconds: this.banTtlSeconds,
+			hadPendingConfirmation: Boolean(pendingState)
+		});
+	}
+
+	async isUserBanned(userId: string): Promise<boolean> {
+		return (await this.client.get(this.buildBannedUserKey(userId))) !== null;
+	}
+
+	async recordEarlyTermination(userId: string): Promise<'strike_recorded' | 'ban_triggered' | 'already_banned'> {
+		if (await this.isUserBanned(userId)) {
+			this.logger.debug(
+				'Early termination ignored because user is already banned. Warning: User appears to have access to collaboration session while banned.', 
+				{ userId });
+			return 'already_banned';
+		}
+
+		const strikeKey = this.buildStrikeKey(userId);
+
+		// Creates strike key for user (with TTL of 1 hour) only if key doesn't already exist
+		const setResult = await this.client.set(strikeKey, 'true', {
+			EX: this.strikeTtlSeconds,
+			NX: true
+		});
+
+		// If setResult returned 'OK', strike was recorded (wasn't previously there). So user is safe from ban for now
+		if (setResult === 'OK') {
+			this.logger.info('Early termination strike recorded', {
+				userId,
+				strikeKey,
+				strikeTtlSeconds: this.strikeTtlSeconds
+			});
+			return 'strike_recorded';
+		}
+
+		// Otherwise, user is banned for 1 hour and strike key is cleared
+		await this.client.del(strikeKey);
+		await this.banUser(userId);
+		this.logger.info('Early termination allowance exceeded, user banned', { userId, strikeKey });
+		return 'ban_triggered';
+	}
+
+	// Check if user is currently in queue
+	async isUserQueued(userId: string): Promise<boolean> {
+		const waitingUser = this.parseWaitingUser(await this.client.get(this.buildWaitingUserKey(userId)));
+		return waitingUser !== null;
+	}
+
+	// Check if user has pending imperfect match confirmation
+	async hasPendingConfirmationState(userId: string): Promise<boolean> {
+		const pending = await this.getPendingConfirmationByUser(userId);
+		return pending !== null;
 	}
 
 	async findBestCandidate(requestingUserId: string): Promise<CandidateMatch | null> {
@@ -211,6 +339,19 @@ export class RedisService {
 		let bestScore = -1;
 		// Loop through candidates and calculate compatibility score
 		for (const candidate of candidatePool) {
+			// Skip candidate if either side has candidate in rejected list (previously unsuccessfully matched)
+			const requesterRejectedCandidate = requester.rejectedCandidates.includes(candidate.userId);
+			const candidateRejectedRequester = candidate.rejectedCandidates.includes(requestingUserId);
+			if (requesterRejectedCandidate || candidateRejectedRequester) {
+				this.logger.debug('Skipping candidate due to prior rejection', {
+					requestingUserId,
+					candidateUserId: candidate.userId,
+					requesterRejectedCandidate,
+					candidateRejectedRequester
+				});
+				continue;
+			}
+
 			const score = this.calculateCompatibilityScore(requester.criteria, candidate.criteria);
 			this.logger.debug('Compatibility score calculated', {
 				requestingUserId,
@@ -229,7 +370,9 @@ export class RedisService {
 			// Check if candidate has a higher score, then if tie check if candidate has longer waiting time
 			const hasHigherScore = score > bestScore;
 			const tieButOlder = score === bestScore && candidate.queuedAt < bestCandidate.queuedAt;
-			if (hasHigherScore || tieButOlder) {
+			const perfectTie = score === bestScore && candidate.queuedAt === bestCandidate.queuedAt;
+			const breakPerfectTieWithCoinFlip = perfectTie && Math.random() > 0.5;
+			if (hasHigherScore || tieButOlder || breakPerfectTieWithCoinFlip) {
 				bestCandidate = candidate;
 				bestScore = score;
 			}
@@ -237,6 +380,17 @@ export class RedisService {
 
 		if (!bestCandidate) {
 			this.logger.warn('No best candidate selected after scoring loop', { requestingUserId });
+			return null;
+		}
+
+		// If best candidate does not meet minimum compatibility score of 3, skip matching for now
+		if (bestScore < this.minimumCompatibilityScore) {
+			this.logger.info('No candidate met minimum compatibility score', {
+				requestingUserId,
+				queueKey,
+				bestScore,
+				minimumCompatibilityScore: this.minimumCompatibilityScore
+			});
 			return null;
 		}
 
@@ -273,7 +427,7 @@ export class RedisService {
 	private calculateCompatibilityScore(a: MatchCriteria, b: MatchCriteria): number {
 		const languageMatch = a.language === b.language ? 1 : 0;
 		const difficultyMatch = this.getDifficultyUtility(a.difficulty, b.difficulty);
-		return languageMatch * 5 + difficultyMatch;
+		return languageMatch * 2 + difficultyMatch;
 	}
 
 	private getDifficultyUtility(a: MatchCriteria['difficulty'], b: MatchCriteria['difficulty']): number {
