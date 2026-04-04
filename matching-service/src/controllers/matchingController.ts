@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { createLogger } from '../utils/logger.js';
 import type { EarlyTerminationDecision } from '../services/matchingService.js';
+import type { RedisService } from '../services/redisService.js';
 
 const logger = createLogger('MatchingController');
 
@@ -57,6 +58,26 @@ export const createEarlyTerminationHandler = (
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             logger.error(`Error occurred while handling early termination: ${message}`);
+            res.status(500).json({ error: message });
+        }
+    };
+};
+
+export const createGetUserStatusHandler = (redisService: RedisService) => {
+    return async (req: Request, res: Response): Promise<void> => {
+        try {
+            const rawUserId = req.params.userId;
+            const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+            if (!userId) {
+                res.status(400).json({ error: 'Missing required parameter: userId' });
+                return;
+            }
+
+            const status = await redisService.getUserMatchingStatus(userId);
+            res.status(200).json(status);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error(`Error occurred while retrieving user status: ${message}`);
             res.status(500).json({ error: message });
         }
     };

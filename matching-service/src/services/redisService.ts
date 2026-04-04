@@ -19,6 +19,13 @@ interface SerializedPendingConfirmationState {
 	acceptedUserIds: string[];
 }
 
+export interface UserMatchingStatus {
+	userId: string;
+	strikeCount: number;
+	isBanned: boolean;
+	isActivelyMatching: boolean;
+}
+
 export class RedisService {
 	private readonly logger = createLogger('RedisService');
 	private readonly client: RedisClientType;
@@ -250,6 +257,30 @@ export class RedisService {
 
 	async isUserBanned(userId: string): Promise<boolean> {
 		return (await this.client.get(this.buildBannedUserKey(userId))) !== null;
+	}
+
+	async getUserStrikeCount(userId: string): Promise<number> {
+		const strikeCount = Number(await this.client.get(this.buildStrikeKey(userId)) ?? 0);
+		return Number.isFinite(strikeCount) && strikeCount > 0 ? strikeCount : 0;
+	}
+
+	async getUserMatchingStatus(userId: string): Promise<UserMatchingStatus> {
+		const [strikeCount, isBanned, waitingUser, pendingState] = await Promise.all([
+			this.getUserStrikeCount(userId),
+			this.isUserBanned(userId),
+			this.client.get(this.buildWaitingUserKey(userId)),
+			this.getPendingConfirmationByUser(userId)
+		]);
+
+		const inTopicQueue = waitingUser !== null;
+		const hasPendingConfirmation = pendingState !== null;
+
+		return {
+			userId,
+			strikeCount,
+			isBanned,
+			isActivelyMatching: inTopicQueue || hasPendingConfirmation
+		};
 	}
 
 	async recordEarlyTermination(userId: string): Promise<{ outcome: 'strike_recorded' | 'ban_triggered' | 'already_banned'; strikeCount?: number }> {
