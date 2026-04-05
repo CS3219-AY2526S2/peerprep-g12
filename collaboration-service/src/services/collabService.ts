@@ -4,6 +4,8 @@ import redisClient from '../config/redis';
 import supabase from '../config/supabase';
 import * as sessionService from './sessionService';
 
+const matchingServiceUrl = process.env.MATCHING_SERVICE_URL || 'http://localhost:3002';
+
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 mins (F11.6)
 const IDLE_WARNING_MS = 30 * 1000; // 30 s to respond (F11.6.2)
 const CODE_SAVE_INTERVAL_MS = 5000; // save code every 5 seconds (F11.4.2)
@@ -143,6 +145,23 @@ export const initCollabService = (httpServer: HttpServer) => {
       if (sessionDurationMs < TWO_MINUTES_MS) {
         console.log(`Early termination detected by ${userId} in session ${sessionId}`);
 
+        try {
+          const statusResponse = await fetch(
+            `${matchingServiceUrl}/users/${userId}/status`
+          );
+          if (statusResponse.ok) {
+            const status = await statusResponse.json() as { strikeCount: number };
+            if (status.strikeCount >= 3) {
+              socket.emit('early-termination-warning', {
+                message: `Warning: You have ${status.strikeCount} early terminations. You will be banned from matchmaking for 1 hour if you reach 5.`,
+                strikeCount: status.strikeCount,
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch user status from Matching Service:', err);
+        }
+
         // notify Matching Service (F11.7.4)
         const terminatedAt = new Date();
         await notifyEarlyTermination(userId, sessionId, terminatedAt);
@@ -197,11 +216,8 @@ const notifyEarlyTermination = async (
   sessionId: string,
   terminatedAt: Date
 ): Promise<void> => {
-  const matchingServiceUrl = process.env.MATCHING_SERVICE_URL || 'http://localhost:3002';
   const payload = {
     userId: terminatingUserId,
-    sessionId,
-    terminatedAt: terminatedAt.toISOString(),
   };
 
   try {
