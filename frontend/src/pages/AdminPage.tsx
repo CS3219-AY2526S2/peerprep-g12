@@ -254,12 +254,11 @@ export default function AdminPage() {
   }
 
   function getQuestionPreview(question: Question) {
-    const textContent = (question.blocks ?? [])
-      .filter((block) => block.block_type === "text")
-      .map((block) => block.content)
+    return (question.blocks ?? [])
+      .map((block) =>
+        block.block_type === "image" ? `[image:${block.content}]` : block.content,
+      )
       .join("\n\n");
-
-    return textContent;
   }
 
   function getQuestionTextPreview(question: Question) {
@@ -505,6 +504,9 @@ export default function AdminPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Description
                 </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  To insert an image, use: [image:https://example.com/image.png]
+                </p>
                 <textarea
                   value={description}
                   onChange={(e) => {
@@ -839,12 +841,25 @@ export default function AdminPage() {
                             (question.blocks ?? []).map((block, index) => {
                               if (block.block_type === "image") {
                                 return (
-                                  <img
-                                    key={`${question.id}-block-${index}`}
-                                    src={block.content}
-                                    alt={`Question block ${index + 1}`}
-                                    className="max-h-96 w-auto rounded-lg border border-slate-200"
-                                  />
+                                  <div key={`${question.id}-block-${index}`}>
+                                    <img
+                                      src={block.content}
+                                      alt={`Question block ${index + 1}`}
+                                      className="max-h-96 w-auto rounded-lg border border-slate-200"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                        const next = e.currentTarget
+                                          .nextElementSibling as HTMLElement | null;
+                                        if (next) next.style.display = "block";
+                                      }}
+                                    />
+                                    <p
+                                      style={{ display: "none" }}
+                                      className="text-sm text-red-500"
+                                    >
+                                      Image failed to load: {block.content}
+                                    </p>
+                                  </div>
                                 );
                               }
 
@@ -913,6 +928,10 @@ export default function AdminPage() {
                               <label className="mb-1 block text-sm font-medium text-slate-700">
                                 Description
                               </label>
+                              <p className="mt-1 text-xs text-slate-500">
+                                To insert an image, use:
+                                [image:https://example.com/image.png]
+                              </p>
                               <textarea
                                 rows={6}
                                 value={editDescription}
