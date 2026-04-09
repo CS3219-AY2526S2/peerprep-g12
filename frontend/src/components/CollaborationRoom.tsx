@@ -3,6 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import * as Y from "yjs";
 import type { Session } from "../services/collaborationService";
 import type { Question } from "../services/questionService";
+import ChatPanel from "./ChatPanel";
 
 const COLLAB_SERVER_URL =
   import.meta.env.VITE_COLLAB_SERVICE_URL || "http://localhost:3003";
@@ -272,7 +273,7 @@ export default function CollaborationRoom({
       .join("\n\n") || "No question description available.";
 
   return (
-    <div className="grid grid-cols-2 gap-6 h-[80vh]">
+    <div className="grid grid-cols-3 gap-6 h-[80vh]">
       <div className="bg-white rounded-xl shadow-sm p-6 overflow-auto">
         <h2 className="text-lg font-semibold mb-3">{question.title}</h2>
 
@@ -358,6 +359,13 @@ export default function CollaborationRoom({
           <p>Partner disconnected: {partnerDisconnected ? "Yes" : "No"}</p>
         </div>
       </div>
+
+      <ChatPanel
+        sessionId={session.session_id}
+        userId={userId}
+        username={username}
+        disabled={!!sessionEndedMessage}
+      />
     </div>
   );
 }
