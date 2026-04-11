@@ -71,13 +71,14 @@ export async function sendPrompt(req: Request, res: Response): Promise<void> {
 		}
 
     // Send session info and user prompt to prompt service to craft the prompt
-		const craftedPrompt = buildPrompt({
+		const craftedPrompt = await buildPrompt({
 			language: session.language,
 			difficulty: session.difficulty,
 			topic: session.topic,
 			questionId: session.question_id,
 			codeContent: session.code_content,
 			userPrompt: prompt,
+			authorization,
 		});
 
     // Send crafted prompt to response service to get AI response
