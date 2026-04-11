@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express, { Request, Response } from "express";
 import { createLogger } from "./utils/logger";
+import aiChatRoutes from "./routes/aiChatRoutes";
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ const PORT = Number(process.env.PORT) || 3006;
 
 app.use(cors());
 app.use(express.json());
+app.use(aiChatRoutes);
 
 // Health check
 app.get("/", (_req: Request, res: Response) => {
