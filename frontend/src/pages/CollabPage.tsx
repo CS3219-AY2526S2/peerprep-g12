@@ -6,7 +6,9 @@ import { RiTableView } from "react-icons/ri";
 import { LuLayers3, LuRotateCw } from "react-icons/lu";
 import { FaSort } from "react-icons/fa";
 import { TbBinaryTreeFilled } from "react-icons/tb";
+import { FiCheck, FiChevronDown } from "react-icons/fi";
 import linkedListIcon from "../assets/linkedlist.png";
+import { Listbox } from "@headlessui/react";
 import { io, type Socket } from "socket.io-client";
 import { getUserInfo } from "../services/userService";
 import CollaborationRoom from "../components/CollaborationRoom";
@@ -108,6 +110,12 @@ const DIFFICULTY_OPTIONS: DifficultyOption[] = [
     className: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
     selectedClassName: "border-red-500 ring-2 ring-red-300 bg-red-100",
   },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+  { value: "java", label: "Java" },
 ];
 
 const MATCHING_SERVER_URL =
@@ -620,20 +628,57 @@ export default function CollabPage() {
                   <label className="block text-sm font-medium mb-1">
                     Language
                   </label>
-                  <div className="relative">
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="w-full appearance-none border border-slate-300 rounded-xl px-3 pr-12 py-3 bg-white"
-                    >
-                      <option value="javascript">JavaScript</option>
-                      <option value="python">Python</option>
-                      <option value="java">Java</option>
-                    </select>
-                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-slate-500">
-                      ▼
-                    </span>
-                  </div>
+
+                  <Listbox
+                    value={language}
+                    onChange={(value) => setLanguage(value)}
+                  >
+                    <div className="relative">
+                      <Listbox.Button className="relative w-full rounded-xl border border-slate-300 bg-white px-3 py-3 pr-10 text-left text-slate-800 shadow-sm transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                        <span>
+                          {
+                            LANGUAGE_OPTIONS.find(
+                              (option) => option.value === language,
+                            )?.label
+                          }
+                        </span>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
+                          <FiChevronDown className="h-5 w-5" />
+                        </span>
+                      </Listbox.Button>
+
+                      <Listbox.Options className="absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg focus:outline-none">
+                        {LANGUAGE_OPTIONS.map((option) => (
+                          <Listbox.Option
+                            key={option.value}
+                            value={option.value}
+                            className={({ active }) =>
+                              `relative cursor-pointer select-none px-4 py-3 ${
+                                active
+                                  ? "bg-indigo-50 text-indigo-700"
+                                  : "text-slate-700"
+                              }`
+                            }
+                          >
+                            {({ selected }) => (
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={
+                                    selected ? "font-medium" : "font-normal"
+                                  }
+                                >
+                                  {option.label}
+                                </span>
+                                {selected && (
+                                  <FiCheck className="h-4 w-4 text-indigo-600" />
+                                )}
+                              </div>
+                            )}
+                          </Listbox.Option>
+                        ))}
+                      </Listbox.Options>
+                    </div>
+                  </Listbox>
                 </div>
 
                 <button
