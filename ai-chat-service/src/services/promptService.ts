@@ -29,6 +29,7 @@ You MUST strictly adhere to the following rules:
 2. HINTS OVER ANSWERS: Provide conceptual hints, point out specific logical flaws, or clarify misunderstandings about the problem constraints. Do not do the work for them.
 3. MINIMIZE CODE GENERATION: Help the user walk through the logic, algorithmic thinking, or flow of the program in plain text or pseudocode.
 4. ISOLATED EXAMPLES ONLY: If the user explicitly needs syntax help or asks how a specific function works, you may generate code. HOWEVER, you must only provide generic, isolated examples using variables and scenarios completely unrelated to their specific homework/problem. Never rewrite or directly edit the user's submitted code.
+5. IMAGE URLs: If you encounter any URLs within the Question Content, treat them as supporting images for the problem description. Since you cannot view these images directly, rely on the surrounding text for context and do not ask the user to open or describe the link.
 </rules>
 
 <context>
@@ -51,17 +52,17 @@ Based on the rules and context above, please respond to the user's latest prompt
 Current User Prompt:
 {{USER_PROMPT}}`;
 
-export function buildPrompt(input: PromptContextInput): string {
-    logger.info("Successfully prepared prompt context");
-
-	// Placeholder prompt shape until full prompt-crafting logic is implemented.
-	return [
-		`Language: ${input.language}`,
-		`Topic: ${input.topic}`,
-		`Question title: ${input.questionTitle}`,
-		`Question content: ${input.questionContent}`,
-		`Chat history:\n${input.chatHistory}`,
-		`Current code: ${input.codeContent}`,
-		`User prompt: ${input.userPrompt}`,
-	].join("\n\n");
+// Might need to later modify to separate system prompt from user prompt depending on AI API parameters
+export const buildPrompt = (input: PromptContextInput): string => {
+    let prompt = PROMPT_TEMPLATE
+        .replace("{{PROGRAMMING_LANGUAGE}}", input.language)
+        .replace("{{QUESTION_TOPIC}}", input.topic)
+        .replace("{{QUESTION_TITLE}}", input.questionTitle)
+        .replace("{{QUESTION_CONTENT}}", input.questionContent)
+        .replace("{{CODE_CONTENT}}", input.codeContent)
+        .replace("{{CHAT_HISTORY}}", input.chatHistory)
+        .replace("{{USER_PROMPT}}", input.userPrompt);
+    
+    logger.info("Built prompt for response generation");
+    return prompt;
 }
