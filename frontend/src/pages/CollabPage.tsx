@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { MdOutlineDataArray } from "react-icons/md";
+import { VscSymbolString } from "react-icons/vsc";
+import { BsShare, BsShareFill } from "react-icons/bs";
+import { RiTableView } from "react-icons/ri";
+import { LuLayers3, LuRotateCw } from "react-icons/lu";
+import { FaSort } from "react-icons/fa";
+import { TbBinaryTreeFilled } from "react-icons/tb";
+import linkedListIcon from "../assets/linkedlist.png";
 import { io, type Socket } from "socket.io-client";
 import { getUserInfo } from "../services/userService";
 import CollaborationRoom from "../components/CollaborationRoom";
@@ -48,6 +56,58 @@ type MatchResponsePayload = {
   message?: string;
   proposedMatch?: CandidateMatch;
 };
+
+type TopicOption = {
+  value: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  imageSrc?: string;
+};
+
+type DifficultyOption = {
+  value: string;
+  label: string;
+  description: string;
+  className: string;
+  selectedClassName: string;
+};
+
+const TOPIC_OPTIONS: TopicOption[] = [
+  { value: "Arrays", icon: MdOutlineDataArray },
+  { value: "Strings", icon: VscSymbolString },
+  { value: "Graphs", icon: BsShareFill },
+  { value: "Trees", icon: TbBinaryTreeFilled },
+  { value: "Sorting", icon: FaSort },
+  { value: "Hash Tables", icon: RiTableView },
+  { value: "Linked List", imageSrc: linkedListIcon },
+  { value: "Recursion", icon: LuRotateCw },
+  { value: "Heaps", icon: LuLayers3 },
+  { value: "Tries", icon: BsShare },
+];
+
+const DIFFICULTY_OPTIONS: DifficultyOption[] = [
+  {
+    value: "easy",
+    label: "Easy",
+    description: "Good for warm-up",
+    className: "border-green-200 bg-green-50 text-green-700 hover:bg-green-100",
+    selectedClassName: "border-green-500 ring-2 ring-green-300 bg-green-100",
+  },
+  {
+    value: "medium",
+    label: "Medium",
+    description: "Balanced challenge",
+    className:
+      "border-yellow-200 bg-yellow-50 text-yellow-700 hover:bg-yellow-100",
+    selectedClassName: "border-yellow-500 ring-2 ring-yellow-300 bg-yellow-100",
+  },
+  {
+    value: "hard",
+    label: "Hard",
+    description: "More intense practice",
+    className: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+    selectedClassName: "border-red-500 ring-2 ring-red-300 bg-red-100",
+  },
+];
 
 const MATCHING_SERVER_URL =
   import.meta.env.VITE_MATCHING_SERVICE_URL || "http://localhost:3002";
@@ -423,6 +483,12 @@ export default function CollabPage() {
     }
   }
 
+  const showMatchingBase =
+    state === "idle" || state === "waiting" || state === "confirming";
+
+  const showWaitingModal = state === "waiting";
+  const showConfirmingModal = state === "confirming";
+
   if (state === "connecting") {
     return (
       <div className="max-w-xl">
@@ -434,187 +500,250 @@ export default function CollabPage() {
     );
   }
 
-  if (state === "idle") {
+  if (showMatchingBase) {
     return (
-      <div className="max-w-xl">
-        <h1 className="text-2xl font-bold mb-6">Start Collaboration</h1>
+      <div className="max-w-6xl relative">
+        <div
+          className={`transition duration-200 ${
+            showWaitingModal || showConfirmingModal
+              ? "blur-sm pointer-events-none select-none"
+              : ""
+          }`}
+        >
+          <h1 className="text-2xl font-bold mb-6">Start Collaboration</h1>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm space-y-4">
-          {showDisconnectedWarning && !isConnected && (
-            <p className="text-sm text-red-500">
-              Not connected to matching service.
-            </p>
-          )}
-
-          {message && <p className="text-sm text-slate-600">{message}</p>}
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Topic</label>
-            <select
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-            >
-              <option value="">Select topic</option>
-              <option value="Arrays">Arrays</option>
-              <option value="Strings">Strings</option>
-              <option value="Graphs">Graphs</option>
-              <option value="Trees">Trees</option>
-              <option value="Sorting">Sorting</option>
-              <option value="Hash Tables">Hash Tables</option>
-              <option value="Linked List">Linked List</option>
-              <option value="Recursion">Recursion</option>
-              <option value="Heaps">Heaps</option>
-              <option value="Tries">Tries</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Difficulty</label>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-            >
-              <option value="">Select difficulty</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Language</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-            >
-              <option value="javascript">JavaScript</option>
-              <option value="python">Python</option>
-              <option value="java">Java</option>
-            </select>
-          </div>
-
-          <button
-            onClick={handleFindMatch}
-            disabled={!topic || !difficulty || !language || !isConnected}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-          >
-            Find Match
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === "waiting") {
-    return (
-      <div className="max-w-xl">
-        <h1 className="text-2xl font-bold mb-6">Finding a Peer...</h1>
-
-        <div className="bg-white p-6 rounded-xl shadow-sm text-center space-y-4">
-          <p className="text-slate-600">
-            {message || "Matching you with another user."}
-          </p>
-
-          <p className="text-sm text-slate-500">
-            Topic: <strong>{topic}</strong>
-          </p>
-
-          <p className="text-sm text-slate-500">
-            Difficulty: <strong>{difficulty}</strong>
-          </p>
-
-          <p className="text-sm text-slate-500">
-            Language: <strong>{language}</strong>
-          </p>
-
-          {countdown !== null && (
-            <p className="text-sm text-slate-500">
-              Timeout in{" "}
-              <span className="font-semibold text-red-500">{countdown}s</span>
-            </p>
-          )}
-
-          <div className="animate-pulse text-blue-600 font-medium">
-            Searching...
-          </div>
-
-          <button
-            onClick={handleCancelQueue}
-            className="mt-4 px-4 py-2 border rounded-lg hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === "confirming") {
-    return (
-      <div className="max-w-xl">
-        <h1 className="text-2xl font-bold mb-6">Confirm Match</h1>
-
-        <div className="bg-white p-6 rounded-xl shadow-sm space-y-4 border border-yellow-200">
-          <p className="text-slate-700 font-medium">
-            {message || "An imperfect match was found."}
-          </p>
-
-          {proposedMatch?.resolvedCriteria && (
-            <div className="text-sm text-slate-600 space-y-1">
-              <p>
-                Topic: <strong>{proposedMatch.resolvedCriteria.topic}</strong>
+          <div className="bg-white p-6 rounded-2xl shadow-sm space-y-6">
+            {showDisconnectedWarning && !isConnected && (
+              <p className="text-sm text-red-500">
+                Not connected to matching service.
               </p>
-              <p>
-                Difficulty:{" "}
-                <strong>{proposedMatch.resolvedCriteria.difficulty}</strong>
-              </p>
-              <p>
-                Language:{" "}
-                <strong>{proposedMatch.resolvedCriteria.language}</strong>
-              </p>
+            )}
+
+            {message && state === "idle" && (
+              <p className="text-sm text-slate-600">{message}</p>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr] gap-8">
+              {/* LEFT SIDE: TOPICS */}
+              <div>
+                <label className="block text-sm font-medium mb-3">Topic</label>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {TOPIC_OPTIONS.map((topicOption) => {
+                    const isSelected = topic === topicOption.value;
+                    const Icon = topicOption.icon;
+
+                    return (
+                      <button
+                        key={topicOption.value}
+                        type="button"
+                        onClick={() => setTopic(topicOption.value)}
+                        className={`rounded-xl border p-4 min-h-[120px] flex flex-col items-center justify-center text-center gap-3 transition ${
+                          isSelected
+                            ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                            : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {topicOption.imageSrc ? (
+                          <img
+                            src={topicOption.imageSrc}
+                            alt={topicOption.value}
+                            className="w-10 h-10 object-contain"
+                          />
+                        ) : Icon ? (
+                          <Icon className="w-10 h-10 text-indigo-600" />
+                        ) : null}
+
+                        <span className="text-sm font-medium text-slate-800">
+                          {topicOption.value}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT SIDE: DIFFICULTY + LANGUAGE */}
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-3">
+                    Difficulty
+                  </label>
+
+                  <div className="space-y-3">
+                    {DIFFICULTY_OPTIONS.map((option) => {
+                      const isSelected = difficulty === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDifficulty(option.value)}
+                          className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                            option.className
+                          } ${isSelected ? option.selectedClassName : ""}`}
+                        >
+                          <div className="font-semibold">{option.label}</div>
+                          <div className="text-xs opacity-80">
+                            {option.description}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Language
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="w-full appearance-none border border-slate-300 rounded-xl px-3 pr-12 py-3 bg-white"
+                    >
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="java">Java</option>
+                    </select>
+                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-slate-500">
+                      ▼
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleFindMatch}
+                  disabled={!topic || !difficulty || !language || !isConnected}
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:bg-gray-300"
+                >
+                  Find Match
+                </button>
+              </div>
             </div>
-          )}
-
-          {countdown !== null && (
-            <p className="text-sm text-slate-500">
-              Expires in{" "}
-              <span className="font-semibold text-red-500">{countdown}s</span>
-            </p>
-          )}
-
-          {confirmationChoice === "accepted" && (
-            <p className="text-sm text-green-600 text-center">
-              You accepted the match. Waiting for the other user...
-            </p>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleConfirmMatch(true)}
-              className={`w-full py-2 rounded-lg transition ${
-                confirmationChoice === "accepted"
-                  ? "bg-green-200 text-green-800 ring-2 ring-green-500"
-                  : "bg-green-600 text-white hover:bg-green-700"
-              }`}
-            >
-              Accept Match
-            </button>
-
-            <button
-              onClick={() => handleConfirmMatch(false)}
-              className={`w-full py-2 rounded-lg border transition ${
-                confirmationChoice === "declined"
-                  ? "bg-red-100 text-red-700 border-red-300 ring-2 ring-red-400"
-                  : "hover:bg-gray-100"
-              }`}
-            >
-              Decline Match
-            </button>
           </div>
         </div>
+
+        {(showWaitingModal || showConfirmingModal) && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-2xl bg-white/30" />
+
+            <div className="relative z-10 w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 p-6 text-center space-y-4">
+              {showWaitingModal && (
+                <>
+                  <h2 className="text-xl font-semibold text-slate-800">
+                    Finding a Peer...
+                  </h2>
+
+                  <div className="text-sm text-slate-500 space-y-1">
+                    <p>
+                      Topic: <strong>{topic}</strong>
+                    </p>
+                    <p>
+                      Difficulty: <strong>{difficulty}</strong>
+                    </p>
+                    <p>
+                      Language: <strong>{language}</strong>
+                    </p>
+                  </div>
+
+                  {countdown !== null && (
+                    <p className="text-sm text-slate-500">
+                      Timeout in{" "}
+                      <span className="font-semibold text-red-500">
+                        {countdown}s
+                      </span>
+                    </p>
+                  )}
+
+                  <div className="animate-pulse text-indigo-600 font-medium">
+                    Searching...
+                  </div>
+
+                  <button
+                    onClick={handleCancelQueue}
+                    className="mt-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+
+              {showConfirmingModal && (
+                <>
+                  <h2 className="text-xl font-semibold text-slate-800">
+                    Confirm Match
+                  </h2>
+
+                  <p className="text-slate-700 font-medium">
+                    {message || "An imperfect match was found."}
+                  </p>
+
+                  {proposedMatch?.resolvedCriteria && (
+                    <div className="text-sm text-slate-600 space-y-1">
+                      <p>
+                        Topic:{" "}
+                        <strong>{proposedMatch.resolvedCriteria.topic}</strong>
+                      </p>
+                      <p>
+                        Difficulty:{" "}
+                        <strong>
+                          {proposedMatch.resolvedCriteria.difficulty}
+                        </strong>
+                      </p>
+                      <p>
+                        Language:{" "}
+                        <strong>
+                          {proposedMatch.resolvedCriteria.language}
+                        </strong>
+                      </p>
+                    </div>
+                  )}
+
+                  {countdown !== null && (
+                    <p className="text-sm text-slate-500">
+                      Expires in{" "}
+                      <span className="font-semibold text-red-500">
+                        {countdown}s
+                      </span>
+                    </p>
+                  )}
+
+                  {confirmationChoice === "accepted" && (
+                    <p className="text-sm text-green-600">
+                      You accepted the match. Waiting for the other user...
+                    </p>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleConfirmMatch(true)}
+                      className={`w-full py-2 rounded-lg transition ${
+                        confirmationChoice === "accepted"
+                          ? "bg-green-200 text-green-800 ring-2 ring-green-500"
+                          : "bg-indigo-600 text-white hover:bg-indigo-700"
+                      }`}
+                    >
+                      Accept Match
+                    </button>
+
+                    <button
+                      onClick={() => handleConfirmMatch(false)}
+                      className={`w-full py-2 rounded-lg border transition ${
+                        confirmationChoice === "declined"
+                          ? "bg-red-100 text-red-700 border-red-300 ring-2 ring-red-400"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      Decline Match
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -663,7 +792,7 @@ export default function CollabPage() {
               setProposedMatch(null);
               setSessionId("");
             }}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+            className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
           >
             Back
           </button>
@@ -685,7 +814,7 @@ export default function CollabPage() {
               resetMatchState("idle");
               setMessage("");
             }}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+            className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
           >
             Back to Matching
           </button>
