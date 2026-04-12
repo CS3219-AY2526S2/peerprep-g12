@@ -72,14 +72,18 @@ export async function sendPrompt(req: Request, res: Response): Promise<void> {
 			return;
 		}
 
-		const cohesiveQuestion = await parseQuestion(session.question_id, authorization);
+		const { questionTitle, questionContent } = await parseQuestion(
+			session.question_id,
+			authorization
+		);
 		const chatHistory = await getFormattedChatHistory(sessionId, userId);
 
     // Send session info and user prompt to prompt service to craft the prompt
 		const craftedPrompt = buildPrompt({
 			language: session.language,
 			topic: session.topic,
-			cohesiveQuestion,
+			questionTitle,
+			questionContent,
 			codeContent: session.code_content,
 			chatHistory,
 			userPrompt: prompt,

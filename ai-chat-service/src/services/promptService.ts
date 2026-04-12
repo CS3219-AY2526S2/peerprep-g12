@@ -12,7 +12,8 @@ const logger = createLogger("AiChatPromptService");
 type PromptContextInput = {
 	language: string;
 	topic: string;
-	cohesiveQuestion: string;
+	questionTitle: string;
+	questionContent: string;
 	codeContent: string;
 	chatHistory: string;
 	userPrompt: string;
@@ -57,7 +58,8 @@ export function buildPrompt(input: PromptContextInput): string {
 	return [
 		`Language: ${input.language}`,
 		`Topic: ${input.topic}`,
-		`Question: ${input.cohesiveQuestion}`,
+		`Question title: ${input.questionTitle}`,
+		`Question content: ${input.questionContent}`,
 		`Chat history:\n${input.chatHistory}`,
 		`Current code: ${input.codeContent}`,
 		`User prompt: ${input.userPrompt}`,

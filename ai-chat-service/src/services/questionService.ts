@@ -11,12 +11,17 @@ type QuestionResponse = {
   blocks: QuestionBlock[];
 };
 
+type ParsedQuestion = {
+  questionTitle: string;
+  questionContent: string;
+};
+
 const QUESTION_SERVICE_URL = process.env.QUESTION_SERVICE_URL || "http://localhost:3001";
 
 export async function parseQuestion(
   questionId: string,
   authorization: string
-): Promise<string> {
+): Promise<ParsedQuestion> {
   const response = await fetch(
     `${QUESTION_SERVICE_URL}/questions/id/${questionId}`,
     {
@@ -48,21 +53,24 @@ export async function parseQuestion(
     throw new Error("Invalid question payload from question service");
   }
 
-  return combineQuestion(body.title, body.blocks);
+  logger.info("Successfully fetched and parsed question from question service", {
+    questionId,    
+    questionTitle: body.title,
+  });
+  return splitQuestion(body.title, body.blocks);
 }
 
-// Combines question title and block content
-function combineQuestion(title: string, blocks: QuestionBlock[]): string {
+function splitQuestion(title: string, blocks: QuestionBlock[]): ParsedQuestion {
+  const questionTitle = title.trim();
   const blockContent = blocks
     .map((block) => block.content.trim())
     .filter((content) => content.length > 0)
     .join("\n\n");
 
-  if (!blockContent) {
-    return title.trim();
-  }
-
-  return `${title.trim()}\n\n${blockContent}`;
+  return {
+    questionTitle,
+    questionContent: blockContent,
+  };
 }
 
 // Checks if value has expected shape of question service response
