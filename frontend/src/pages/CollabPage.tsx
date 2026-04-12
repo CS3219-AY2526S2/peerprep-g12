@@ -517,7 +517,7 @@ export default function CollabPage() {
       <div className="max-w-xl">
         <h1 className="text-2xl font-bold mb-6">Start Collaboration</h1>
         <div className="bg-white p-6 rounded-xl shadow-sm">
-          <p className="text-slate-600">Connecting to matching service...</p>
+          <p className="text-slate-600">Connecting...</p>
         </div>
       </div>
     );

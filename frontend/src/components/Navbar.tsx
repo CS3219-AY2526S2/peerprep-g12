@@ -14,7 +14,7 @@ export default function Navbar() {
   const [user, setUser] = useState<UserProfile | null>(null);
 
   const linkStyle = "block px-4 py-2 rounded-lg transition";
-  const activeStyle = "bg-blue-600 text-white";
+  const activeStyle = "bg-indigo-600 text-white";
   const inactiveStyle = "text-slate-700 hover:bg-slate-200";
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function Navbar() {
   return (
     <aside className="w-60 bg-white shadow-md p-6 flex flex-col">
       <div className="mb-8 flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-blue-600">PeerPrep</h1>
+        <h1 className="text-xl font-bold text-indigo-600">PeerPrep</h1>
 
         <button
           onClick={handleLogout}
