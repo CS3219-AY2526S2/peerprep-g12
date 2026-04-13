@@ -5,7 +5,10 @@ import { buildPrompt } from "../services/promptService";
 import { fetchSessionById } from "../services/collaborationService";
 import { parseQuestion } from "../services/questionService";
 import { getFormattedChatHistory } from "../services/chatHistoryService";
-import { checkAndIncrementPromptCount } from "../services/promptLimitService";
+import {
+	checkAndIncrementPromptCount,
+	getRemainingPromptCount,
+} from "../services/promptLimitService";
 import { persistPromptAndResponse } from "../services/messagePersistService";
 
 const logger = createLogger("AiChatController");
@@ -14,6 +17,50 @@ type SendPromptBody = {
 	userId?: string;
 	prompt?: string;
 };
+
+type PromptCountQuery = {
+  userId?: string;
+};
+
+async function validateSessionAccess(
+  sessionId: string,
+  userId: string,
+  authorization: string,
+  res: Response
+) {
+  const sessionResult = await fetchSessionById(sessionId, authorization);
+
+  if (!sessionResult.ok) {
+		if (sessionResult.error === "Session not found") {
+			logger.warn("Session not found during prompt request", { sessionId });
+			res.status(404).json({ error: "Session not found" });
+			return null;
+		}
+
+		logger.warn("Failed to validate session", {
+			sessionId,
+			status: sessionResult.status,
+			error: sessionResult.error,
+		});
+		res.status(sessionResult.status).json({ error: sessionResult.error });
+		return null;
+	}
+
+	const session = sessionResult.session;
+	if (session.status !== "active") {
+		logger.warn("Session is not active", { sessionId, userId, status: session.status });
+		res.status(409).json({ error: "Session is not active" });
+		return null;
+	}
+
+	if (session.user1_id !== userId && session.user2_id !== userId) {
+		logger.warn("User does not belong to session", { sessionId, userId });
+		res.status(403).json({ error: "Unauthorised access to session" });
+		return null;
+	}
+
+	return session;
+}
 
 export async function sendPrompt(req: Request, res: Response): Promise<void> {
 	const { sessionId } = req.params;
@@ -40,39 +87,13 @@ export async function sendPrompt(req: Request, res: Response): Promise<void> {
 	}
 
 	try {
-		const sessionResult = await fetchSessionById(sessionId, authorization);
-
-    // Check if session is successfully fetched
-		if (!sessionResult.ok) {
-			if (sessionResult.error === "Session not found") {
-				logger.warn("Session not found during prompt request", { sessionId });
-				res.status(404).json({ error: "Session not found" });
-				return;
-			}
-
-			logger.warn("Failed to validate session", {
-				sessionId,
-				status: sessionResult.status,
-				error: sessionResult.error,
-			});
-			res.status(sessionResult.status).json({ error: sessionResult.error });
-			return;
-		}
-
-    // Check if session is currently active
-		const session = sessionResult.session;
-		if (session.status !== "active") {
-			logger.warn("Session is not active", { sessionId, userId, status: session.status });
-			res.status(409).json({ error: "Session is not active" });
-			return;
-		}
-
-    // Check if user is part of the session
-		if (session.user1_id !== userId && session.user2_id !== userId) {
-			logger.warn("User does not belong to session", { sessionId, userId });
-			res.status(403).json({ error: "Unauthorised access to session" });
-			return;
-		}
+		const session = await validateSessionAccess(
+			sessionId,
+			userId,
+			authorization,
+			res
+		);
+		if (!session) return;
     
 		// Check prompt limit
 		const promptLimitResult = await checkAndIncrementPromptCount(sessionId, userId);
@@ -133,6 +154,55 @@ export async function sendPrompt(req: Request, res: Response): Promise<void> {
 			error: error instanceof Error ? error.message : "Unknown error",
 		});
 		res.status(502).json({ error: "Failed to get response from AI service" });
+	}
+}
+
+export async function getPromptCount(req: Request, res: Response): Promise<void> {
+  const { sessionId } = req.params;
+  const { userId } = req.query as PromptCountQuery;
+  const authorization = req.headers.authorization;
+
+  if (!sessionId) {
+    logger.error("Missing sessionId in URL params");
+		res.status(400).json({ error: "sessionId is required in URL params" });
+		return;
+	}
+
+	if (!userId) {
+		logger.error("Missing userId in query params");
+		res.status(400).json({ error: "userId is required in query params" });
+		return;
+	}
+
+	if (!authorization || !authorization.startsWith("Bearer ")) {
+		logger.error("Missing or invalid authorization header");
+		res.status(401).json({ error: "Missing or invalid authorization header" });
+		return;
+	}
+
+	try {
+		const session = await validateSessionAccess(
+			sessionId,
+			userId,
+			authorization,
+			res
+		);
+		if (!session) return;
+
+		const promptCount = await getRemainingPromptCount(sessionId, userId);
+
+		res.status(200).json({
+			count: promptCount.count,
+			limit: promptCount.limit,
+			remainingRequests: promptCount.remainingRequests,
+		});
+	} catch (error) {
+		logger.error("Failed to fetch prompt count", {
+			sessionId,
+			userId,
+			error: error instanceof Error ? error.message : "Unknown error",
+		});
+		res.status(502).json({ error: "Failed to get prompt count" });
 	}
 }
 
