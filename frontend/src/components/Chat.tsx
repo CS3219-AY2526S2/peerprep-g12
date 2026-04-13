@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AIExplanationType } from "../services/aiExplanationsService";
 
 type TabType = "Partner Chat" | "AI Chat" | "AI Explanations";
@@ -19,6 +20,20 @@ export default function Chat({
   handleAIRequest,
   aiResponse,
 }: Props) {
+  const MAX_PROMPTS = 15;
+  const [promptsLeft, setPromptsLeft] = useState(MAX_PROMPTS);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatMessages, setAiChatMessages] = useState<string[]>([]);
+
+  function sendAiChatMessage() {
+    const trimmed = aiChatInput.trim();
+    if (!trimmed || promptsLeft <= 0) return;
+
+    setAiChatMessages((prev) => [...prev, trimmed]);
+    setAiChatInput("");
+    setPromptsLeft((prev) => Math.max(0, prev - 1));
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col min-h-0">
       <div className="flex border-b mb-3">
@@ -58,7 +73,73 @@ export default function Chat({
 
       {/* {activeTab === "Partner Chat" */}
 
-      {/* {activeTab === "AI Chat" */}
+      {activeTab === "AI Chat" && (
+        <>
+          <div className="text-sm text-gray-500 mb-2">
+            {`Prompts left: ${promptsLeft} / ${MAX_PROMPTS}`}
+          </div>
+
+          <div className="flex-1 overflow-y-auto border rounded p-3 text-sm text-slate-700 space-y-2">
+            {aiChatMessages.length === 0 ? (
+              <p className="text-slate-500">Send a prompt to start chatting with AI.</p>
+            ) : (
+              aiChatMessages.map((message, index) => (
+                <div key={index} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-lg bg-indigo-100 px-3 py-2 text-indigo-900 whitespace-pre-wrap">
+                    {message}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <textarea
+              value={aiChatInput}
+              onChange={(e) => setAiChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendAiChatMessage();
+                }
+              }}
+              placeholder="Ask AI for guidance..."
+              rows={2}
+              className="flex-1 resize-none rounded-lg border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            <button
+              onClick={sendAiChatMessage}
+              disabled={promptsLeft === 0 || aiChatInput.trim().length === 0}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${
+                promptsLeft === 0 || aiChatInput.trim().length === 0
+                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700"
+              }`}
+              aria-label="Send AI chat prompt"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-4 w-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M22 2 11 13"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m22 2-7 20-4-9-9-4 20-7Z"
+                />
+              </svg>
+            </button>
+          </div>
+        </>
+      )}
 
       {activeTab === "AI Explanations" && (
         <>
