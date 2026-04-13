@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AIExplanationType } from "../services/aiExplanationsService";
@@ -39,11 +39,22 @@ export default function Chat({
   handleAIRequest,
   aiResponse,
 }: Props) {
+  const MIN_INPUT_HEIGHT_PX = 40;
+  const MAX_INPUT_HEIGHT_PX = 56;
+
   const MAX_PROMPTS = 15;
   const [promptsLeft, setPromptsLeft] = useState<number>(MAX_PROMPTS);
   const [isUsingBackendCount, setIsUsingBackendCount] = useState(false);
   const [sendingAiChat, setSendingAiChat] = useState(false);
   const [aiChatInput, setAiChatInput] = useState("");
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  function resizeInput(target: HTMLTextAreaElement) {
+    target.style.height = `${MIN_INPUT_HEIGHT_PX}px`;
+    const nextHeight = Math.min(target.scrollHeight, MAX_INPUT_HEIGHT_PX);
+    target.style.height = `${nextHeight}px`;
+    target.style.overflowY = target.scrollHeight > MAX_INPUT_HEIGHT_PX ? "auto" : "hidden";
+  }
 
   useEffect(() => {
     if (typeof remainingPrompts === "number") {
@@ -57,12 +68,31 @@ export default function Chat({
     }
   }, [remainingPrompts, promptCountLoading]);
 
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [aiChatMessages, sendingAiChat]);
+
+  useEffect(() => {
+    if (activeTab !== "AI Chat") return;
+
+    window.requestAnimationFrame(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  }, [activeTab]);
+
   async function sendAiChatMessage() {
     const trimmed = aiChatInput.trim();
     if (!trimmed || promptsLeft <= 0 || sendingAiChat) return;
 
     appendAiChatMessage({ role: "user", content: trimmed });
     setAiChatInput("");
+
+    const inputEl = document.getElementById("ai-chat-input") as HTMLTextAreaElement | null;
+    if (inputEl) {
+      inputEl.style.height = `${MIN_INPUT_HEIGHT_PX}px`;
+      inputEl.style.overflowY = "hidden";
+    }
+
     // Fallback for prompt count in case backend count not avail
     if (!isUsingBackendCount) {
       setPromptsLeft((prev) => Math.max(0, prev - 1));
@@ -129,7 +159,7 @@ export default function Chat({
             {!promptCountLoading && !isUsingBackendCount && " (estimated)"}
           </div>
 
-          <div className="flex-1 overflow-y-auto border rounded p-3 text-sm text-slate-700 space-y-2">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden rounded-xl bg-slate-100/80 p-4 text-sm text-slate-700 space-y-2">
             {aiChatHistoryLoading ? (
               <p className="text-slate-500">Loading chat history...</p>
             ) : aiChatMessages.length === 0 ? (
@@ -138,12 +168,15 @@ export default function Chat({
               aiChatMessages.map((message, index) => (
                 message.role === "user" ? (
                   <div key={index} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-lg bg-indigo-100 px-3 py-2 text-indigo-900 whitespace-pre-wrap">
+                    <div className="max-w-[85%] rounded-lg bg-indigo-100 px-3 py-2 text-indigo-900 whitespace-pre-wrap break-words">
                       {message.content}
                     </div>
                   </div>
                 ) : (
-                  <div key={index} className="prose prose-slate max-w-none text-slate-700">
+                  <div
+                    key={index}
+                    className="prose prose-slate max-w-none overflow-x-hidden text-slate-700 prose-pre:whitespace-pre-wrap prose-pre:break-words prose-pre:overflow-x-hidden prose-code:break-words"
+                  >
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {message.content}
                     </ReactMarkdown>
@@ -152,12 +185,17 @@ export default function Chat({
               ))
             )}
             {sendingAiChat && <p className="text-slate-500">Thinking...</p>}
+            <div ref={chatBottomRef} />
           </div>
 
           <div className="mt-3 flex items-center gap-2">
             <textarea
+              id="ai-chat-input"
               value={aiChatInput}
-              onChange={(e) => setAiChatInput(e.target.value)}
+              onChange={(e) => {
+                setAiChatInput(e.target.value);
+                resizeInput(e.currentTarget);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -165,8 +203,8 @@ export default function Chat({
                 }
               }}
               placeholder="Ask AI for guidance..."
-              rows={2}
-              className="flex-1 resize-none rounded-lg border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              rows={1}
+              className="flex-1 h-10 resize-none rounded-lg border border-slate-300 p-2 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
             <button
               onClick={() => {

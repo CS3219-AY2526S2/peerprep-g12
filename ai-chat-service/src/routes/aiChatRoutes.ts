@@ -13,7 +13,7 @@ router.post('/sessions/:sessionId/chat', sendPrompt);
 // GET /sessions/:sessionId/promptCount - get remaining prompts for the user for that session
 router.get('/sessions/:sessionId/promptCount', getPromptCount);
 
-// GET /sessions/:sessionId/chatHistory - get persisted AI chat history for the session/user
+// GET /sessions/:sessionId/chatHistory - get AI chat history for the user for that session
 router.get('/sessions/:sessionId/chatHistory', getChatHistory);
 
 export default router;

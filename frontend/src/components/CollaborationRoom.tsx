@@ -437,7 +437,7 @@ export default function CollaborationRoom({
 
   return (
     <div
-      className={`grid gap-6 h-[80vh] min-h-0 ${
+      className={`grid gap-3 h-[calc(100dvh-4rem)] min-h-0 ${
         isChatOpen ? "grid-cols-3" : "grid-cols-2"
       }`}
     >
