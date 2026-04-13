@@ -62,3 +62,29 @@ export async function checkAndIncrementPromptCount(
     throw new Error("Failed to validate prompt rate limit");
   }
 }
+
+export async function getRemainingPromptCount(
+  sessionId: string,
+  userId: string
+): Promise<{ count: number; limit: number; remainingRequests: number }> {
+  const key = `prompt:${sessionId}:${userId}`;
+
+  try {
+    const currentCount = Number((await redisClient.get(key)) ?? 0);
+    const count = Number.isFinite(currentCount) && currentCount > 0 ? currentCount : 0;
+    const remainingRequests = Math.max(0, PROMPT_LIMIT - count);
+
+    return {
+      count,
+      limit: PROMPT_LIMIT,
+      remainingRequests,
+    };
+  } catch (error) {
+    logger.error("Failed to fetch prompt count", {
+      sessionId,
+      userId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw new Error("Failed to fetch prompt count");
+  }
+}
