@@ -17,7 +17,6 @@ import { getQuestionById, type Question } from "../services/questionService";
 
 type CollabState =
   | "idle"
-  | "connecting"
   | "waiting"
   | "confirming"
   | "timed_out"
@@ -126,7 +125,8 @@ export default function CollabPage() {
   const suppressNextDisconnectMessageRef = useRef(false);
   const disconnectWarningTimeoutRef = useRef<number | null>(null);
 
-  const [state, setState] = useState<CollabState>("connecting");
+  const [state, setState] = useState<CollabState>("idle");
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [showDisconnectedWarning, setShowDisconnectedWarning] = useState(false);
 
@@ -359,17 +359,18 @@ export default function CollabPage() {
             await loadSessionRoom(activeSession.session_id);
             return;
           }
-        } catch {
-        }
+        } catch {}
+        connectMatchingSocket(mountedRef);
       } catch (error) {
         console.error("Failed to load user info:", error);
         if (!mountedRef.current) return;
         setState("error");
         setMessage("Failed to load user info.");
-        return;
+      } finally {
+        if (mountedRef.current) {
+          setIsBootstrapping(false);
+        }
       }
-
-      connectMatchingSocket(mountedRef);
     }
 
     void setupUserAndSocket();
@@ -463,7 +464,6 @@ export default function CollabPage() {
   }
 
   function handleLeaveSession() {
-    setState("connecting");
     setSessionId("");
     setSession(null);
     setQuestion(null);
@@ -472,6 +472,7 @@ export default function CollabPage() {
     setCountdown(null);
     setConfirmationChoice(null);
     setShowDisconnectedWarning(false);
+    setState("idle");
 
     if (!socketRef.current || !socketRef.current.connected) {
       connectMatchingSocket();
@@ -520,17 +521,6 @@ export default function CollabPage() {
   const showConfirmingModal = state === "confirming";
   const showTimeoutModal = state === "timed_out";
 
-  if (state === "connecting") {
-    return (
-      <div className="max-w-xl">
-        <h1 className="text-2xl font-bold mb-6">Start Collaboration</h1>
-        <div className="bg-white p-6 rounded-xl shadow-sm">
-          <p className="text-slate-600">Connecting...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (showMatchingBase) {
     return (
       <div className="max-w-6xl relative">
@@ -542,7 +532,6 @@ export default function CollabPage() {
           }`}
         >
           <h1 className="text-2xl font-bold mb-6">Start Collaboration</h1>
-
           <div className="bg-white p-6 rounded-2xl shadow-sm space-y-6">
             {showDisconnectedWarning && !isConnected && (
               <p className="text-sm text-red-500">
@@ -683,7 +672,13 @@ export default function CollabPage() {
 
                 <button
                   onClick={handleFindMatch}
-                  disabled={!topic || !difficulty || !language || !isConnected}
+                  disabled={
+                    !topic ||
+                    !difficulty ||
+                    !language ||
+                    !isConnected ||
+                    isBootstrapping
+                  }
                   className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:bg-gray-300"
                 >
                   Find Match
