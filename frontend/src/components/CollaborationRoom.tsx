@@ -13,6 +13,7 @@ import {
   getRemainingPromptCount,
   sendPromptToAiChat,
 } from "../services/aiChatService";
+import QuestionDisplay from "../components/QuestionDisplay";
 
 const COLLAB_SERVER_URL =
   import.meta.env.VITE_COLLAB_SERVICE_URL || "http://localhost:3003";
@@ -104,7 +105,7 @@ export default function CollaborationRoom({
         sessionId: session.session_id,
         code: ytext.toString(),
       });
-      
+
       socketInstance.emit("save-code", {
         sessionId: session.session_id,
         code: ytext.toString(),
@@ -149,7 +150,7 @@ export default function CollaborationRoom({
       }, 500);
     });
 
-    socket.on("partner-already-present", ({ username }: { username?: string}) => {
+    socket.on("partner-already-present", ({ username }: { username?: string }) => {
       if (username && username !== currentUsername) {
         setPartnerName(username);
       }
@@ -391,40 +392,40 @@ export default function CollaborationRoom({
   }
 
   async function handleAIRequest(type: AIExplanationType) {
-  if (type === "EXPLAIN_CODE" && (!code || code.trim().length === 0)) {
-    setAIResponse("There is no code yet to explain.");
-    return;
-  }
+    if (type === "EXPLAIN_CODE" && (!code || code.trim().length === 0)) {
+      setAIResponse("There is no code yet to explain.");
+      return;
+    }
 
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const fullQuestion =
-      question.blocks?.length
-        ? question.blocks
+      const fullQuestion =
+        question.blocks?.length
+          ? question.blocks
             .filter((block) => block.block_type === "text")
             .map((block) => block.content)
             .join("\n\n")
-        : question.title;
+          : question.title;
 
-    const data = await getAiExplanation(
-      type,
-      fullQuestion,
-      code,
-      session.session_id,
-      userId,
-    );
+      const data = await getAiExplanation(
+        type,
+        fullQuestion,
+        code,
+        session.session_id,
+        userId,
+      );
 
-    setAIResponse(data.response);
-    setRemainingRequests(data.remainingRequests);
-  } catch (err) {
-    console.log("Error fetching AI explanation:", err);
-    setAIResponse("Error fetching AI response.");
-    
-  } finally {
-    setLoading(false);
+      setAIResponse(data.response);
+      setRemainingRequests(data.remainingRequests);
+    } catch (err) {
+      console.log("Error fetching AI explanation:", err);
+      setAIResponse("Error fetching AI response.");
+
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   async function handleSendAiChatPrompt(prompt: string): Promise<string> {
     const data = await sendPromptToAiChat(session.session_id, userId, prompt);
@@ -438,12 +439,11 @@ export default function CollaborationRoom({
 
   return (
     <div
-      className={`grid gap-3 h-[calc(100dvh-4rem)] min-h-0 ${
-        isChatOpen ? "grid-cols-3" : "grid-cols-2"
-      }`}
+      className={`grid gap-3 h-[calc(100dvh-4rem)] min-h-0 ${isChatOpen ? "grid-cols-3" : "grid-cols-2"
+        }`}
     >
       <div className="bg-white rounded-xl shadow-sm p-6 overflow-auto">
-        <h2 className="text-lg font-semibold mb-3">{question.title}</h2>
+        {/* <h2 className="text-lg font-semibold mb-3">{question.title}</h2> */}
 
         <div className="space-y-2 text-sm text-slate-600 mb-4">
           <p>
@@ -460,7 +460,7 @@ export default function CollaborationRoom({
           </p>
         </div>
 
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           {question.blocks && question.blocks.length > 0 ? (
             question.blocks.map((block, index) => {
               if (block.block_type === "text") {
@@ -493,7 +493,8 @@ export default function CollaborationRoom({
               No question description available.
             </p>
           )}
-        </div>
+        </div> */}
+        <QuestionDisplay question={question} />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col min-h-0">
@@ -501,11 +502,10 @@ export default function CollaborationRoom({
           <h2 className="text-lg font-semibold">Code Editor</h2>
           <button
             onClick={() => setIsChatOpen((prev) => !prev)}
-            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-              isChatOpen
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${isChatOpen
                 ? "bg-indigo-100 border-indigo-300 text-indigo-700"
                 : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
-            }`}
+              }`}
             aria-label="Toggle chat panel"
           >
             <ChatBubbleLeftRightIcon className="h-4 w-4" aria-hidden="true" />
@@ -584,13 +584,12 @@ export default function CollaborationRoom({
 
         <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
           <span
-            className={`inline-block h-2.5 w-2.5 rounded-full ${
-              partnerConnected
+            className={`inline-block h-2.5 w-2.5 rounded-full ${partnerConnected
                 ? "bg-green-500"
                 : partnerName
                   ? "bg-red-500"
                   : "bg-slate-300"
-            }`}
+              }`}
           />
           <span>
             Partner:{" "}
