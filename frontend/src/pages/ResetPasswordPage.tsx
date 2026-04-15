@@ -1,0 +1,205 @@
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { resetPassword } from "../services/userService";
+
+export default function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const hash = location.hash.startsWith("#")
+    ? location.hash.substring(1)
+    : location.hash;
+
+  const params = new URLSearchParams(hash);
+  const errorCode = params.get("error_code");
+
+  const isExpired = errorCode === "otp_expired";
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg text-center">
+
+          <h1 className="text-2xl font-bold text-slate-800">
+            {isExpired ? "Verification link expired" : "Email confirmed"}
+          </h1>
+            <p className="mt-4 text-sm text-slate-600">
+              Your password reset link has expired or is invalid.
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Please request a new password reset email.
+            </p>
+              
+          <div className="mt-6">
+            <Link
+              to="/login"
+              className="inline-block rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-700"
+            >
+              Go to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const passwordChecks = useMemo(
+    () => ({
+      minLength: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    }),
+    [password],
+  );
+
+  const passwordValid =
+    passwordChecks.minLength &&
+    passwordChecks.uppercase &&
+    passwordChecks.lowercase &&
+    passwordChecks.number &&
+    passwordChecks.special;
+
+  const passwordsMatch =
+    confirmPassword.length > 0 && password === confirmPassword;
+
+  function requirementItem(label: string, met: boolean) {
+    return (
+      <li className={met ? "text-green-600" : "text-slate-500"}>
+        {met ? "✓" : "•"} {label}
+      </li>
+    );
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (!(passwordValid && passwordsMatch)) return;
+
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+
+    if (!accessToken || !refreshToken) {
+      setError("Invalid or expired reset link.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await resetPassword(password, refreshToken, accessToken);
+      setSubmitted(true);
+
+      setTimeout(() => {
+        navigate("/login");
+      }, 1200);
+    } catch (err: any) {
+      setError(err?.message || "Failed to reset password.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
+        <h1 className="text-2xl font-bold text-slate-800 text-center">
+          Reset Password
+        </h1>
+        <p className="mt-2 text-center text-sm text-slate-500">
+          Enter your new password
+        </p>
+
+        {!submitted ? (
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
+
+            <ul className="space-y-1 text-sm">
+              {requirementItem(
+                "At least 8 characters",
+                passwordChecks.minLength,
+              )}
+              {requirementItem(
+                "Contains an uppercase letter",
+                passwordChecks.uppercase,
+              )}
+              {requirementItem(
+                "Contains a lowercase letter",
+                passwordChecks.lowercase,
+              )}
+              {requirementItem("Contains a number", passwordChecks.number)}
+              {requirementItem(
+                "Contains a special character",
+                passwordChecks.special,
+              )}
+            </ul>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setError("");
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              />
+              <div className="mt-1 min-h-5 text-sm">
+                {confirmPassword.length > 0 && passwordsMatch && (
+                  <span className="text-green-600">✓ Passwords match</span>
+                )}
+                {confirmPassword.length > 0 && !passwordsMatch && (
+                  <span className="text-red-500">✗ Passwords do not match</span>
+                )}
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-red-500">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={submitting || !(passwordValid && passwordsMatch)}
+              className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {submitting ? "Resetting..." : "Reset Password"}
+            </button>
+          </form>
+        ) : (
+          <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+            Password reset successful. Redirecting to login...
+          </div>
+        )}
+
+        <div className="mt-5 text-center text-sm text-slate-600">
+          <Link to="/login" className="text-indigo-600 hover:underline">
+            Back to login
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

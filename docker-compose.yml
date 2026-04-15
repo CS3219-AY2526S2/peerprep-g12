@@ -1,0 +1,133 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_USER_SERVICE_URL=http://localhost:3000
+      - VITE_QUESTION_SERVICE_URL=http://localhost:3001
+      - VITE_MATCHING_SERVICE_URL=http://localhost:3002
+      - VITE_COLLAB_SERVICE_URL=http://localhost:3003
+      - VITE_AI_EXPLANATIONS_SERVICE_URL=http://localhost:4000
+    depends_on:
+      - matching-service
+      - user-service
+      - question-service
+      - collaboration-service
+      - ai-explanations-service
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "3000:3000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+
+  matching-service:
+    build: ./matching-service
+    ports:
+      - "3002:3002"
+    environment:
+      - USER_SERVICE_URL=http://user-service:3000
+      - QUESTION_SERVICE_URL=http://question-service:3001
+      - COLLABORATION_SERVICE_URL=http://collaboration-service:3003
+      - REDIS_URL=redis://redis:6379
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      - redis
+      - user-service
+      - question-service
+      - collaboration-service
+
+  collaboration-service:
+    build: ./collaboration-service
+    ports:
+      - "3003:3003"
+    environment:
+      - USER_SERVICE_URL=http://user-service:3000
+      - QUESTION_SERVICE_URL=http://question-service:3001
+      - MATCHING_SERVICE_URL=http://matching-service:3002
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      - redis
+      - rabbitmq
+      - user-service
+      - question-service
+    restart: always
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+
+  question-service:
+    build: ./question-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./question-service/.env
+    environment:
+      - USER_SERVICE_URL=http://user-service:3000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - user-service
+
+  chat-service:
+    build: ./chat-service
+    ports:
+      - "3004:3004"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USER_SERVICE_URL=http://user-service:3000
+      - COLLAB_SERVICE_URL=http://collaboration-service:3003
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: always
+
+  ai-explanations-service:
+    build: ./ai-explanations-service
+    ports:
+      - "4000:4000"
+    environment:
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - REDIS_HOST=redis
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - COLLAB_SERVICE_URL=http://collaboration-service:3003
+    depends_on:
+      - redis
+      - collaboration-service
+
+  ai-chat-service:
+    build: ./ai-chat-service
+    ports:
+      - "3005:3005"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - QUESTION_SERVICE_URL=http://question-service:3001
+      - COLLABORATION_SERVICE_URL=http://collaboration-service:3003
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    depends_on:
+      - redis
+      - collaboration-service
+      - question-service
