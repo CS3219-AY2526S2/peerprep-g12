@@ -12,6 +12,7 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
 
     if (!email || !password) {
       setError("Please enter both email and password.");
@@ -25,7 +26,7 @@ export default function LoginPage() {
       navigate("/home");
     } catch (err: any) {
       if (err?.code === "INVALID_CREDENTIALS") {
-        setError("");
+        setError("Invalid email or password.");
       } else {
         setError(err?.message || "Login failed. Please try again.");
       }

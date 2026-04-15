@@ -51,9 +51,10 @@ async function authFetch<T>(
       console.error("Error data:", data);
 
       if (
-        response.status === 401 ||
-        data?.code === "INVALID_TOKEN" ||
-        data?.code === "UNAUTHORIZED"
+        token &&
+        (response.status === 401 ||
+          data?.code === "INVALID_TOKEN" ||
+          data?.code === "UNAUTHORIZED")
       ) {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("isAdmin");
